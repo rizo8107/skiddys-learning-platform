@@ -1,0 +1,18 @@
+{
+  "name": "skiddys-project",
+  "services": {
+    "web": {
+      "image": "local",
+      "dockerfile": "./Dockerfile",
+      "ports": {
+        "8090": "http"
+      },
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "resources": {
+        "memory": 512
+      }
+    }
+  }
+}
