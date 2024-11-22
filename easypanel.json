@@ -8,11 +8,26 @@
         "8090": "http"
       },
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "PORT": "8090",
+        "POCKETBASE_URL": "http://localhost:8090"
       },
       "resources": {
-        "memory": 512
-      }
+        "memory": 512,
+        "cpu": 0.5
+      },
+      "volumes": [
+        {
+          "host": "pb_data",
+          "container": "/app/backend/pb_data"
+        }
+      ],
+      "domains": [
+        {
+          "host": "$APP_HOST",
+          "port": 8090
+        }
+      ]
     }
   }
 }
