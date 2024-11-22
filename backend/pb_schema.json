@@ -1,0 +1,180 @@
+{
+  "collections": [
+    {
+      "name": "users",
+      "type": "auth",
+      "system": false,
+      "schema": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": true,
+          "options": {
+            "values": ["student", "instructor", "admin"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "courses",
+      "type": "base",
+      "system": false,
+      "listRule": "true",
+      "viewRule": "true",
+      "createRule": "@request.auth.role = 'instructor' || @request.auth.role = 'admin'",
+      "updateRule": "@request.auth.role = 'instructor' && @request.auth.id = instructor.id || @request.auth.role = 'admin'",
+      "deleteRule": "@request.auth.role = 'instructor' && @request.auth.id = instructor.id || @request.auth.role = 'admin'",
+      "options": {
+        "allowApiListRule": true,
+        "allowApiViewRule": true
+      },
+      "indexes": ["CREATE INDEX idx_course_instructor ON courses (instructor)"],
+      "schema": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "thumbnail",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "duration",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "level",
+          "type": "select",
+          "required": true,
+          "options": {
+            "values": ["Beginner", "Intermediate", "Advanced"]
+          }
+        },
+        {
+          "name": "instructor",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "users",
+            "cascadeDelete": false,
+            "maxSelect": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "lessons",
+      "type": "base",
+      "system": false,
+      "listRule": "true",
+      "viewRule": "true",
+      "createRule": "@request.auth.role = 'instructor' || @request.auth.role = 'admin'",
+      "updateRule": "@request.auth.role = 'instructor' && @request.auth.id = course.instructor.id || @request.auth.role = 'admin'",
+      "deleteRule": "@request.auth.role = 'instructor' && @request.auth.id = course.instructor.id || @request.auth.role = 'admin'",
+      "options": {
+        "allowApiListRule": true,
+        "allowApiViewRule": true
+      },
+      "schema": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "course",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "courses",
+            "cascadeDelete": true,
+            "maxSelect": 1
+          }
+        },
+        {
+          "name": "videoUrl",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "order",
+          "type": "number",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "enrollments",
+      "type": "base",
+      "system": false,
+      "listRule": "@request.auth.id != ''",
+      "viewRule": "@request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'",
+      "createRule": "@request.auth.id != ''",
+      "updateRule": "@request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'",
+      "deleteRule": "@request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'",
+      "options": {
+        "allowApiListRule": true,
+        "allowApiViewRule": true
+      },
+      "schema": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "users",
+            "cascadeDelete": true,
+            "maxSelect": 1
+          }
+        },
+        {
+          "name": "course",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "courses",
+            "cascadeDelete": true,
+            "maxSelect": 1
+          }
+        },
+        {
+          "name": "progress",
+          "type": "number",
+          "required": true,
+          "options": {
+            "min": 0,
+            "max": 100
+          }
+        },
+        {
+          "name": "completedLessons",
+          "type": "json",
+          "required": false
+        }
+      ]
+    }
+  ]
+}
