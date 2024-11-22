@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { logout, pb } from '../lib/pocketbase';
+import { useNavigate, Link } from 'react-router-dom';
+import { logout, pb, isAdmin } from '../lib/pocketbase';
+import { Logo } from './Logo';
+import { UserCircle, Settings, LogOut } from 'lucide-react';
 
 export function Navigation() {
   const navigate = useNavigate();
@@ -12,64 +14,107 @@ export function Navigation() {
     navigate('/login');
   };
 
+  if (!user) {
+    return (
+      <nav className="bg-gray-800/50 backdrop-blur-lg border-b border-gray-700/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
+            <div className="flex">
+              <div className="flex-shrink-0 flex items-center">
+                <Link to="/">
+                  <Logo />
+                </Link>
+              </div>
+            </div>
+            <div className="flex items-center">
+              <Link
+                to="/login"
+                className="text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium 
+                         hover:bg-gray-700/50 transition-colors duration-200"
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
   return (
-    <nav className="bg-white dark:bg-gray-800 shadow">
+    <nav className="bg-gray-800/50 backdrop-blur-lg border-b border-gray-700/50 relative z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div className="flex">
-            <div className="flex-shrink-0 flex items-center">
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">LMS</span>
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <Link to="/">
+                <Logo />
+              </Link>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <a
-                href="/courses"
-                className="border-indigo-500 text-gray-900 dark:text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+            <div className="hidden sm:ml-8 sm:flex sm:space-x-4">
+              <Link
+                to="/courses"
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-medium
+                         hover:bg-gray-700/50 transition-colors duration-200"
               >
                 Courses
-              </a>
+              </Link>
+              {isAdmin() && (
+                <Link
+                  to="/settings"
+                  className="text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-medium
+                           hover:bg-gray-700/50 transition-colors duration-200"
+                >
+                  Settings
+                </Link>
+              )}
             </div>
           </div>
 
           <div className="flex items-center">
-            <div className="ml-3 relative">
-              <div>
-                <button
-                  type="button"
-                  className="bg-white dark:bg-gray-800 rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  id="user-menu-button"
-                  aria-expanded="false"
-                  aria-haspopup="true"
-                  onClick={() => setIsProfileOpen(!isProfileOpen)}
-                >
-                  <span className="sr-only">Open user menu</span>
-                  <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">
-                      {user?.email?.charAt(0).toUpperCase() || 'U'}
-                    </span>
-                  </div>
-                </button>
-              </div>
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="flex items-center text-gray-300 hover:text-white p-2 rounded-lg
+                         hover:bg-gray-700/50 transition-colors duration-200"
+              >
+                <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">
+                    {user.email?.charAt(0).toUpperCase() || 'U'}
+                  </span>
+                </div>
+              </button>
 
               {isProfileOpen && (
-                <div
-                  className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white dark:bg-gray-700 ring-1 ring-black ring-opacity-5 focus:outline-none"
-                  role="menu"
-                  aria-orientation="vertical"
-                  aria-labelledby="user-menu-button"
-                >
-                  <a
-                    href="/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
-                    role="menuitem"
+                <div className="absolute right-0 mt-2 w-48 py-2 bg-gray-800 rounded-lg shadow-xl border border-gray-700 z-50">
+                  <Link
+                    to="/profile"
+                    className="flex items-center px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700/50
+                             transition-colors duration-200"
+                    onClick={() => setIsProfileOpen(false)}
                   >
-                    Your Profile
-                  </a>
+                    <UserCircle className="w-4 h-4 mr-2" />
+                    Profile
+                  </Link>
+                  <Link
+                    to="/support"
+                    className="flex items-center px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700/50
+                             transition-colors duration-200"
+                    onClick={() => setIsProfileOpen(false)}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Support
+                  </Link>
                   <button
-                    onClick={handleLogout}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
-                    role="menuitem"
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700/50
+                             transition-colors duration-200"
                   >
-                    Sign out
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
                   </button>
                 </div>
               )}

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { LessonList } from '../components/LessonList';
 import { CourseHeader } from '../components/CourseHeader';
-import { CourseDetails } from '../components/CourseDetails';
+import { LessonDetails } from '../components/LessonDetails';
 import { ReviewList } from '../components/ReviewList';
 import { courseService, lessonService, Course, Lesson } from '../lib/pocketbase';
 import { Loader2 } from 'lucide-react';
@@ -90,7 +90,7 @@ export default function CourseDetailsPage() {
                 <p className="text-gray-400">Select a lesson to start learning</p>
               </div>
             )}
-            <CourseDetails course={course} />
+            <LessonDetails lesson={currentLesson} />
           </div>
           
           <div className="lg:col-span-1 space-y-6">

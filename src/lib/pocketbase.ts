@@ -5,8 +5,10 @@ export const pb = new PocketBase('http://127.0.0.1:8090');
 // Collection Types
 export interface User extends Record {
     name: string;
+    username: string;
     avatar?: string;
     role: 'student' | 'instructor' | 'admin';
+    email?: string;
 }
 
 export interface Course extends Record {
@@ -18,6 +20,17 @@ export interface Course extends Record {
     level?: string;
     prerequisites?: string[];
     skills?: string[];
+    expand?: {
+        instructor?: User;
+    };
+}
+
+export interface LessonResource extends Record {
+    lesson: string;
+    resource_title: string;
+    resource_file: string;
+    resource_type: 'document' | 'video' | 'exercise' | 'other';
+    resource_description?: string;
 }
 
 export interface Lesson extends Record {
@@ -28,6 +41,10 @@ export interface Lesson extends Record {
     order: number;
     completed?: boolean;
     duration?: string;
+    objectives?: string[];
+    expand?: {
+        resources?: LessonResource[];
+    };
 }
 
 export interface Review {
@@ -51,6 +68,10 @@ export interface Enrollment extends Record {
     course: string;
     progress: number;
     completedLessons?: string[];
+}
+
+export interface Settings extends Record {
+    // Add settings properties here
 }
 
 // Error Handling
@@ -79,14 +100,39 @@ const handlePocketbaseError = (error: unknown) => {
 export const courseService = {
     async getAll(): Promise<Course[]> {
         try {
-            const records = await pb.collection('courses').getList(1, 50, {
-                sort: 'created',
-                expand: 'instructor',
-            });
-            return records.items.map(record => ({
+            let records;
+            
+            if (isAdmin()) {
+                // Admin sees all courses
+                records = await pb.collection('courses').getFullList({
+                    sort: '-created',
+                    expand: 'instructor'
+                });
+            } else {
+                // Regular users only see courses they have access to
+                const userId = pb.authStore.model?.id;
+                if (!userId) return [];
+
+                const user = await pb.collection('users').getOne(userId);
+                const accessibleCourseIds = user.course_access || [];
+
+                if (accessibleCourseIds.length === 0) return [];
+
+                // Only fetch courses that are both enabled and in the user's course_access array
+                records = await pb.collection('courses').getFullList({
+                    filter: `id ?= "${accessibleCourseIds.join('" || id ?= "')}" && enabled = true`,
+                    sort: '-created',
+                    expand: 'instructor'
+                });
+            }
+
+            // Process thumbnails for each course
+            return records.map(record => ({
                 ...record,
-                thumbnail: record.thumbnail ? pb.files.getUrl(record, record.thumbnail) : undefined,
-            })) as Course[];
+                thumbnail: record.thumbnail 
+                  ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
+                  : null
+            }));
         } catch (error) {
             console.error('Error fetching courses:', error);
             return [];
@@ -96,12 +142,14 @@ export const courseService = {
     async getOne(id: string): Promise<Course | null> {
         try {
             const record = await pb.collection('courses').getOne(id, {
-                expand: 'instructor',
+                expand: 'instructor'
             });
             return {
                 ...record,
-                thumbnail: record.thumbnail ? pb.files.getUrl(record, record.thumbnail) : undefined,
-            } as Course;
+                thumbnail: record.thumbnail 
+                    ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
+                    : null
+            };
         } catch (error) {
             console.error('Error fetching course:', error);
             return null;
@@ -198,6 +246,120 @@ export const lessonService = {
     },
 };
 
+// Lesson Resource Services
+export const lessonResourceService = {
+    async getAll(lessonId: string): Promise<LessonResource[]> {
+        if (!lessonId) {
+            console.error('No lesson ID provided to getAll');
+            return [];
+        }
+
+        try {
+            console.log('Fetching resources for lesson:', lessonId);
+            
+            // First verify the lesson exists
+            const lessonExists = await pb.collection('lessons').getOne(lessonId).catch(() => null);
+            if (!lessonExists) {
+                console.error('Lesson not found:', lessonId);
+                return [];
+            }
+
+            const records = await pb.collection('lesson_resources').getFullList({
+                filter: `lesson = "${lessonId}"`,
+                sort: 'created',
+            });
+
+            console.log('Fetched resources:', records);
+            
+            // Validate the records structure
+            const validRecords = records.map(record => {
+                if (!record.resource_file || !record.resource_title) {
+                    console.warn('Invalid resource record:', record);
+                }
+                return record;
+            });
+
+            return validRecords as LessonResource[];
+        } catch (error) {
+            console.error('Error fetching resources:', error);
+            if (error instanceof ClientResponseError) {
+                console.error('PocketBase error details:', {
+                    status: error.status,
+                    data: error.data,
+                    message: error.message
+                });
+            }
+            throw new Error('Failed to fetch lesson resources: ' + (error as Error).message);
+        }
+    },
+
+    async create(data: { 
+        lesson: string;
+        resource_title: string;
+        resource_file: File;
+        resource_type: LessonResource['resource_type'];
+        resource_description?: string;
+    }): Promise<LessonResource> {
+        try {
+            const formData = new FormData();
+            formData.append('lesson', data.lesson);
+            formData.append('resource_title', data.resource_title);
+            formData.append('resource_file', data.resource_file);
+            formData.append('resource_type', data.resource_type);
+            if (data.resource_description) {
+                formData.append('resource_description', data.resource_description);
+            }
+
+            const record = await pb.collection('lesson_resources').create(formData);
+            return record as LessonResource;
+        } catch (error) {
+            handlePocketbaseError(error);
+            throw error;
+        }
+    },
+
+    async delete(id: string): Promise<boolean> {
+        try {
+            await pb.collection('lesson_resources').delete(id);
+            return true;
+        } catch (error) {
+            handlePocketbaseError(error);
+            return false;
+        }
+    },
+
+    getFileUrl(record: LessonResource): string {
+        if (!record?.id || !record.resource_file) {
+            console.error('Invalid resource record for file URL:', record);
+            return '';
+        }
+
+        try {
+            const baseUrl = pb.baseUrl;
+            const collectionId = 'lesson_resources';
+            const recordId = record.id;
+            const fileName = record.resource_file;
+
+            // Construct the file URL
+            const fileUrl = `${baseUrl}/api/files/${collectionId}/${recordId}/${fileName}`;
+            console.log('Generated file URL:', fileUrl);
+            
+            // Verify the URL is valid
+            try {
+                new URL(fileUrl);
+            } catch (e) {
+                console.error('Generated invalid URL:', fileUrl);
+                return '';
+            }
+
+            return fileUrl;
+        } catch (error) {
+            console.error('Error generating file URL:', error);
+            return '';
+        }
+    }
+};
+
 // Review Services
 export const reviewService = {
     async getAll(courseId: string): Promise<Review[]> {
@@ -210,7 +372,7 @@ export const reviewService = {
             return records.items as Review[];
         } catch (error) {
             console.error('Error fetching reviews:', error);
-            return [];
+            throw error;
         }
     },
 
@@ -221,9 +383,7 @@ export const reviewService = {
 
         try {
             const record = await pb.collection('reviews').create({
-                course: data.course,
-                rating: data.rating,
-                comment: data.comment,
+                ...data,
                 user: pb.authStore.model?.id,
             });
             return record as Review;
@@ -326,6 +486,29 @@ export const enrollmentService = {
     },
 };
 
+// Settings Service
+export const settingsService = {
+    async get(): Promise<Settings | null> {
+        try {
+            const records = await pb.collection('settings').getList(1, 1);
+            return records.items[0] as Settings;
+        } catch (error) {
+            console.error('Error fetching settings:', error);
+            return null;
+        }
+    },
+
+    async update(id: string, data: FormData): Promise<Settings> {
+        try {
+            const record = await pb.collection('settings').update(id, data);
+            return record as Settings;
+        } catch (error) {
+            console.error('Error updating settings:', error);
+            throw error;
+        }
+    },
+};
+
 // Authentication
 export const register = async (
     email: string,
@@ -351,7 +534,13 @@ export const register = async (
 
 export const login = async (email: string, password: string) => {
     try {
-        return await pb.collection('users').authWithPassword(email, password);
+        const authData = await pb.collection('users').authWithPassword(email, password);
+        
+        if (!pb.authStore.isValid) {
+            throw new Error('Authentication failed');
+        }
+        
+        return authData;
     } catch (error) {
         console.error('Error logging in:', error);
         throw handlePocketbaseError(error);
@@ -363,9 +552,16 @@ export const logout = () => {
 };
 
 // Auth Store Helpers
-export const getCurrentUser = () => {
-    return pb.authStore.model as User | null;
-};
+export function getCurrentUser(): User | null {
+    if (!pb.authStore.isValid) {
+        return null;
+    }
+    return pb.authStore.model as User;
+}
+
+export function getFileUrl(record: { id: string; collectionId: string; [key: string]: any }, filename: string): string {
+    return `http://127.0.0.1:8090/api/files/${record.collectionId}/${record.id}/${filename}`;
+}
 
 export const isAuthenticated = () => {
     return pb.authStore.isValid;

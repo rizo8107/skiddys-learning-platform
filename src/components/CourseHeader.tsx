@@ -42,7 +42,7 @@ export function CourseHeader({ course }: CourseHeaderProps) {
             {course.instructor && (
               <div className="flex items-center text-gray-400">
                 <BookOpen className="w-4 h-4 mr-2" />
-                <span>By {course.instructor}</span>
+                <span>By {course.expand?.instructor?.username || 'Unknown'}</span>
               </div>
             )}
           </div>

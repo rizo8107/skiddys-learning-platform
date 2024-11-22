@@ -1,17 +1,23 @@
 import React from 'react';
-import { Star, Edit2, Trash2 } from 'lucide-react';
+import { Star, Edit2, Trash2, User as UserIcon } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { reviewService, Review, getCurrentUser } from '../lib/pocketbase';
+import { reviewService, Review, getCurrentUser, User, getFileUrl, pb } from '../lib/pocketbase';
 
 interface ReviewListProps {
   courseId: string;
+}
+
+interface ReviewWithUser extends Review {
+  expand?: {
+    user: User;
+  };
 }
 
 export const ReviewList: React.FC<ReviewListProps> = ({ courseId }) => {
   const [rating, setRating] = React.useState(5);
   const [comment, setComment] = React.useState('');
   const [isEditing, setIsEditing] = React.useState(false);
-  const [editingReview, setEditingReview] = React.useState<Review | null>(null);
+  const [editingReview, setEditingReview] = React.useState<ReviewWithUser | null>(null);
   const currentUser = getCurrentUser();
   const queryClient = useQueryClient();
 
@@ -82,7 +88,7 @@ export const ReviewList: React.FC<ReviewListProps> = ({ courseId }) => {
     }
   };
 
-  const handleEdit = (review: Review) => {
+  const handleEdit = (review: ReviewWithUser) => {
     if (!currentUser) {
       alert('You must be logged in to edit a review');
       return;
@@ -192,38 +198,50 @@ export const ReviewList: React.FC<ReviewListProps> = ({ courseId }) => {
         {reviews.map((review) => (
           <div
             key={review.id}
-            className="bg-gray-700/50 rounded-lg p-4"
+            className="bg-gray-700 rounded-lg p-4 mb-4"
           >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-4">
-                <div className="flex">{renderStars(review.rating)}</div>
-                <div className="flex flex-col">
-                  <span className="text-blue-400 font-medium">
-                    {review.expand?.user?.username || 'Anonymous'}
-                  </span>
-                  <span className="text-gray-400 text-sm">
-                    {new Date(review.created).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-              {currentUser?.id === review.user && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(review)}
-                    className="text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(review.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+            <div className="flex items-start space-x-4">
+              {review.expand?.user?.avatar ? (
+                <img
+                  src={pb.files.getUrl(review.expand.user, review.expand.user.avatar)}
+                  alt={review.expand.user.name}
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center">
+                  <UserIcon className="w-6 h-6 text-gray-300" />
                 </div>
               )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">
+                      {review.expand?.user?.name || 'Anonymous'}
+                    </h4>
+                    <div className="mt-1 flex items-center">
+                      {renderStars(review.rating)}
+                    </div>
+                  </div>
+                  {currentUser && review.user === currentUser.id && (
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleEdit(review)}
+                        className="text-gray-400 hover:text-white"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(review.id)}
+                        className="text-gray-400 hover:text-white"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 text-gray-300">{review.comment}</p>
+              </div>
             </div>
-            <p className="text-white mt-2">{review.comment}</p>
           </div>
         ))}
         {reviews.length === 0 && (

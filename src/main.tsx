@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
+import App from './App';
 
 // Pages
 import RootLayout from './layouts/RootLayout';
@@ -10,10 +11,13 @@ import LoginPage from './pages/LoginPage';
 import CoursesPage from './pages/CoursesPage';
 import CourseDetailsPage from './pages/CourseDetailsPage';
 import ProfilePage from './pages/ProfilePage';
+import SettingsPage from './pages/SettingsPage';
+import SupportPage from './pages/SupportPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 
 // Components
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { pb } from './lib/pocketbase';
+import { pb, isAdmin } from './lib/pocketbase';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,6 +68,26 @@ const router = createBrowserRouter([
             <ProfilePage />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: 'settings',
+        element: (
+          <ProtectedRoute>
+            {isAdmin() ? <SettingsPage /> : <Navigate to="/courses" replace />}
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'support',
+        element: (
+          <ProtectedRoute>
+            <SupportPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'privacy-policy',
+        element: <PrivacyPolicyPage />,
       },
     ],
   },
