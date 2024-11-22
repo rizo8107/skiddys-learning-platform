@@ -10,10 +10,16 @@ services:
     volumes:
       - ./backend/pb_data:/pb_data
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
+      - VIRTUAL_HOST=skiddytamil.in,content.skiddytamil.in
+      - LETSENCRYPT_HOST=skiddytamil.in,content.skiddytamil.in
+      - LETSENCRYPT_EMAIL=your-email@example.com
     networks:
       - app_network
+      - nginx-proxy
 
 networks:
   app_network:
     driver: bridge
+  nginx-proxy:
+    external: true

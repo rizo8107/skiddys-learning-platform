@@ -1,6 +1,6 @@
 import PocketBase, { Record, ClientResponseError } from 'pocketbase';
 
-export const pb = new PocketBase('http://127.0.0.1:8090');
+export const pb = new PocketBase('https://content.skiddytamil.in');
 
 // Collection Types
 export interface User extends Record {
@@ -560,7 +560,7 @@ export function getCurrentUser(): User | null {
 }
 
 export function getFileUrl(record: { id: string; collectionId: string; [key: string]: any }, filename: string): string {
-    return `http://127.0.0.1:8090/api/files/${record.collectionId}/${record.id}/${filename}`;
+    return `https://content.skiddytamil.in/api/files/${record.collectionId}/${record.id}/${filename}`;
 }
 
 export const isAuthenticated = () => {
