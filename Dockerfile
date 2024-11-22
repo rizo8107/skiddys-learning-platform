@@ -1,5 +1,8 @@
 # Build stage
-FROM node:18-alpine as build
+FROM node:18-alpine as builder
+
+# Install dependencies required for building
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
@@ -9,39 +12,45 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy project files
+# Copy source code
 COPY . .
 
-# Build the project
+# Build the application
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine
-
-WORKDIR /app
+FROM nginx:alpine
 
 # Install necessary tools
 RUN apk add --no-cache wget unzip
 
-# Install production dependencies
-COPY package*.json ./
-RUN npm install --production
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Install express for serving the application
-RUN npm install express
+# Copy built files from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy built assets and backend
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/backend ./backend
-
-# Download PocketBase
+# Download and set up PocketBase
+WORKDIR /app
 RUN wget https://github.com/pocketbase/pocketbase/releases/download/v0.21.1/pocketbase_0.21.1_linux_amd64.zip \
-    && unzip pocketbase_0.21.1_linux_amd64.zip -d /app/backend \
+    && unzip -o pocketbase_0.21.1_linux_amd64.zip \
+    && mv pocketbase /usr/local/bin/ \
+    && chmod +x /usr/local/bin/pocketbase \
     && rm pocketbase_0.21.1_linux_amd64.zip \
-    && chmod +x /app/backend/pocketbase
+    && rm -f CHANGELOG.md LICENSE.md
 
-# Expose the port
+# Create data directory
+RUN mkdir -p /pb_data
+
+# Copy PocketBase data if exists
+COPY backend/pb_data /pb_data
+
+# Expose ports
+EXPOSE 80
 EXPOSE 8090
 
-# Start the application
-CMD ["node", "backend/server.js"]
+# Copy start script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
