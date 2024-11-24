@@ -17,12 +17,15 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      // Add a small delay before attempting login to ensure any previous auth state is cleared
+      await new Promise(resolve => setTimeout(resolve, 100));
       await login(email, password);
       
+      // Double check auth state is valid before redirecting
       if (pb.authStore.isValid) {
         navigate('/', { replace: true });
       } else {
-        throw new Error('Login failed. Please check your credentials.');
+        throw new Error('Login validation failed. Please try again.');
       }
     } catch (error: any) {
       console.error('Login error:', error);
@@ -30,6 +33,8 @@ export default function LoginPage() {
         error.message || 
         'Failed to login. Please check your credentials and try again.'
       );
+      // Clear form on error
+      setPassword('');
     } finally {
       setIsLoading(false);
     }

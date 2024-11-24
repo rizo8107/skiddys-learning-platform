@@ -11,10 +11,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ lessons_title, videoUr
       <div className="aspect-video">
         <iframe
           title={lessons_title}
-          src={videoUrl}
+          src={videoUrl.replace('https://', '//')}
           className="w-full h-full"
           allowFullScreen
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          loading="lazy"
         />
       </div>
     </div>

@@ -1,6 +1,11 @@
 import PocketBase, { Record, ClientResponseError } from 'pocketbase';
 
-export const pb = new PocketBase('https://content.skiddytamil.in');
+// Use environment-based URL
+const baseUrl = import.meta.env.PROD 
+    ? 'https://content.skiddytamil.in'
+    : 'http://127.0.0.1:8090';
+
+export const pb = new PocketBase(baseUrl);
 
 // Collection Types
 export interface User extends Record {
@@ -532,18 +537,36 @@ export const register = async (
     }
 };
 
-export const login = async (email: string, password: string) => {
-    try {
-        const authData = await pb.collection('users').authWithPassword(email, password);
-        
-        if (!pb.authStore.isValid) {
-            throw new Error('Authentication failed');
+export const login = async (email: string, password: string, retryCount = 3) => {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
+        try {
+            // Clear any existing auth state before attempting login
+            pb.authStore.clear();
+            
+            const authData = await pb.collection('users').authWithPassword(email, password);
+            
+            // Verify the auth state is valid
+            if (!pb.authStore.isValid) {
+                throw new Error('Authentication failed - invalid auth state');
+            }
+            
+            // Successfully logged in
+            return authData;
+        } catch (error) {
+            lastError = error;
+            console.error(`Login attempt ${attempt} failed:`, error);
+            
+            // If this is not our last attempt, wait before retrying
+            if (attempt < retryCount) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                continue;
+            }
+            
+            // If we've exhausted all retries, throw the last error
+            throw handlePocketbaseError(lastError);
         }
-        
-        return authData;
-    } catch (error) {
-        console.error('Error logging in:', error);
-        throw handlePocketbaseError(error);
     }
 };
 
