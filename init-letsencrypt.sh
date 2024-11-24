@@ -3,7 +3,7 @@
 domains=(skiddytamil.in content.skiddytamil.in)
 rsa_key_size=4096
 data_path="./certbot"
-email="vmanikandan8675@gmail.com"    # Add your email here
+email="contact@thesocialmediacompany.in"    # Add your email here
 staging=0 # Set to 1 if you're testing your setup
 
 if [ -d "$data_path" ]; then
