@@ -1,7 +1,7 @@
 # Configuration
 $SERVER = "root@78.46.225.53"
-$REMOTE_DIR = "/opt/easypanel/data/projects/skiddys-project/volumes"
-$LOCAL_PB_DIR = ".\pb_data"
+$REMOTE_DIR = "/opt/easypanel/data/projects/skiddys-project"
+$PROJECT_NAME = "skiddys-project"
 
 Write-Host "Starting deployment to Easypanel..."
 
@@ -22,43 +22,58 @@ function Copy-ToServer {
     scp -r $source "${SERVER}:$destination"
 }
 
-# 1. Create backup of PocketBase data
-if (Test-Path $LOCAL_PB_DIR) {
-    Write-Host "Creating backup of PocketBase data..."
-    Compress-Archive -Path $LOCAL_PB_DIR -DestinationPath "pb_data_backup.zip" -Force
-    
-    Write-Host "Copying PocketBase data to server..."
-    Copy-ToServer "pb_data_backup.zip" "/tmp/"
-    
-    # Extract on server
-    Write-Host "Extracting PocketBase data on server..."
-    Invoke-SSHCommand "cd /tmp && unzip -o pb_data_backup.zip && rm -rf '$REMOTE_DIR/pb_data/*' && cp -r pb_data/* '$REMOTE_DIR/pb_data/' && rm -rf pb_data pb_data_backup.zip && chown -R 1000:1000 '$REMOTE_DIR/pb_data'"
-    
-    # Cleanup local backup
-    Remove-Item "pb_data_backup.zip" -Force
+# Create project directory
+Write-Host "Creating project directory..."
+Invoke-SSHCommand "mkdir -p $REMOTE_DIR"
+
+# Copy configuration files
+Write-Host "Copying configuration files..."
+Copy-ToServer "docker-compose.yml" "$REMOTE_DIR/"
+Copy-ToServer "nginx.conf" "$REMOTE_DIR/"
+Copy-ToServer "pb_config.json" "$REMOTE_DIR/"
+
+# Create necessary directories
+Write-Host "Creating directories..."
+Invoke-SSHCommand "mkdir -p $REMOTE_DIR/volumes/{pb_data,pb_migrations,pb_hooks,ssl}"
+
+# Copy PocketBase data if exists
+if (Test-Path "pb_data") {
+    Write-Host "Copying PocketBase data..."
+    Copy-ToServer "pb_data/*" "$REMOTE_DIR/volumes/pb_data/"
 }
 
-# 2. Copy configuration files
-Write-Host "Copying configuration files..."
-Copy-ToServer "pb_config.json" "$REMOTE_DIR/pb_config/"
-Invoke-SSHCommand "chown 1000:1000 '$REMOTE_DIR/pb_config/pb_config.json'"
-
-# 3. Copy migrations if they exist
+# Copy migrations if exists
 if (Test-Path "pb_migrations") {
     Write-Host "Copying migrations..."
-    Copy-ToServer "pb_migrations/*" "$REMOTE_DIR/pb_migrations/"
-    Invoke-SSHCommand "chown -R 1000:1000 '$REMOTE_DIR/pb_migrations'"
+    Copy-ToServer "pb_migrations/*" "$REMOTE_DIR/volumes/pb_migrations/"
 }
 
-# 4. Copy hooks if they exist
+# Copy hooks if exists
 if (Test-Path "pb_hooks") {
     Write-Host "Copying hooks..."
-    Copy-ToServer "pb_hooks/*" "$REMOTE_DIR/pb_hooks/"
-    Invoke-SSHCommand "chown -R 1000:1000 '$REMOTE_DIR/pb_hooks'"
+    Copy-ToServer "pb_hooks/*" "$REMOTE_DIR/volumes/pb_hooks/"
 }
 
-# 5. Restart PocketBase service
-Write-Host "Restarting PocketBase service..."
-Invoke-SSHCommand "cd /opt/easypanel && docker-compose restart skiddys-project-pocketbase"
+# Set proper permissions
+Write-Host "Setting permissions..."
+Invoke-SSHCommand "chown -R 1000:1000 $REMOTE_DIR/volumes && chmod -R 755 $REMOTE_DIR/volumes"
 
-Write-Host "Deployment completed! PocketBase service has been restarted."
+# Deploy using Docker Compose
+Write-Host "Deploying services..."
+Invoke-SSHCommand "cd $REMOTE_DIR && docker-compose pull && docker-compose up -d"
+
+# Wait for services to start
+Write-Host "Waiting for services to start..."
+Start-Sleep -Seconds 10
+
+# Check service status
+Write-Host "Checking service status..."
+Invoke-SSHCommand "cd $REMOTE_DIR && docker-compose ps"
+
+Write-Host "`nDeployment completed! Services should be accessible at:"
+Write-Host "Frontend: https://skiddytamil.in"
+Write-Host "PocketBase Admin: https://skiddytamil.in/api/_/"
+
+# Monitor logs
+Write-Host "`nMonitoring logs (Ctrl+C to exit)..."
+Invoke-SSHCommand "cd $REMOTE_DIR && docker-compose logs -f"

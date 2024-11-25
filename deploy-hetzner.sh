@@ -69,7 +69,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    mem_limit: 512M
 
   pocketbase:
     image: ghcr.io/muchobien/pocketbase:latest
@@ -94,7 +93,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    mem_limit: 512M
 
 networks:
   default:
