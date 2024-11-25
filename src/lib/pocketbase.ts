@@ -1,6 +1,7 @@
 import PocketBase, { Record, ClientResponseError } from 'pocketbase';
 
-export const pb = new PocketBase('http://127.0.0.1:8090');
+const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8090';
+export const pb = new PocketBase(baseUrl);
 
 // Collection Types
 export interface User extends Record {

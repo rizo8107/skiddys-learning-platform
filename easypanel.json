@@ -19,7 +19,7 @@
       "image": "ghcr.io/rizo8107/skiddys-learning-platform-frontend",
       "domains": ["skiddytamil.in"],
       "env": {
-        "VITE_API_URL": "https://skiddytamil.in/api"
+        "VITE_API_URL": "https://skiddytamil.in"
       },
       "mounts": {
         "/etc/nginx/ssl": "ssl"
@@ -28,7 +28,8 @@
     "pocketbase": {
       "type": "app",
       "image": "ghcr.io/muchobien/pocketbase:latest",
-      "domains": ["api.skiddytamil.in"],
+      "domains": ["skiddytamil.in"],
+      "path_prefix": "/api",
       "env": {},
       "mounts": {
         "/pb_data": "pb_data",
