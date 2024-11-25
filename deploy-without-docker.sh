@@ -3,6 +3,7 @@
 # Configuration
 DOMAIN="skiddytamil.in"
 EMAIL="nirmal@lifedemy.in"
+POCKETBASE_VERSION="0.23.1"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -17,14 +18,14 @@ apt update && apt upgrade -y
 
 # Install required packages
 echo -e "${GREEN}Installing required packages...${NC}"
-apt install -y nginx certbot python3-certbot-nginx nodejs npm wget unzip
+apt install -y nginx certbot python3-certbot-nginx nodejs npm wget unzip curl
 
 # Stop any existing services
 echo -e "${GREEN}Stopping existing services...${NC}"
 systemctl stop nginx
 systemctl stop pocketbase
-killall nginx
-killall pocketbase
+killall nginx 2>/dev/null || true
+killall pocketbase 2>/dev/null || true
 
 # Clean up any existing processes using ports 80 and 443
 echo -e "${GREEN}Cleaning up ports...${NC}"
@@ -38,9 +39,14 @@ npm install -g pnpm
 echo -e "${GREEN}Downloading PocketBase...${NC}"
 mkdir -p /opt/pocketbase
 cd /opt/pocketbase
-wget https://github.com/pocketbase/pocketbase/releases/latest/download/pocketbase_linux_amd64.zip
-unzip -o pocketbase_linux_amd64.zip
-rm pocketbase_linux_amd64.zip
+wget "https://github.com/pocketbase/pocketbase/releases/download/v${POCKETBASE_VERSION}/pocketbase_${POCKETBASE_VERSION}_linux_amd64.zip"
+if [ $? -ne 0 ]; then
+    echo "Failed to download PocketBase. Trying alternative method..."
+    curl -L -o "pocketbase_${POCKETBASE_VERSION}_linux_amd64.zip" "https://github.com/pocketbase/pocketbase/releases/download/v${POCKETBASE_VERSION}/pocketbase_${POCKETBASE_VERSION}_linux_amd64.zip"
+fi
+
+unzip -o "pocketbase_${POCKETBASE_VERSION}_linux_amd64.zip"
+rm "pocketbase_${POCKETBASE_VERSION}_linux_amd64.zip"
 chmod +x pocketbase
 
 # Create PocketBase service
@@ -69,9 +75,26 @@ EOL
 # Clone and build frontend
 echo -e "${GREEN}Cloning and building frontend...${NC}"
 cd /opt
-rm -rf skiddys
-git clone https://github.com/rizo8107/skiddys-learning-platform.git skiddys
-cd skiddys
+if [ -d "skiddys" ]; then
+    cd skiddys
+    git pull
+else
+    git clone https://github.com/rizo8107/skiddys-learning-platform.git skiddys
+    cd skiddys
+fi
+
+# Check if package.json exists in the current directory
+if [ ! -f "package.json" ]; then
+    echo "package.json not found in the current directory. Checking subdirectories..."
+    # Try to find the frontend directory
+    if [ -d "frontend" ]; then
+        cd frontend
+    else
+        echo "Error: Could not find the frontend directory with package.json"
+        exit 1
+    fi
+fi
+
 pnpm install
 VITE_API_URL=https://skiddytamil.in/api pnpm build
 
@@ -190,7 +213,7 @@ echo -e "${GREEN}Your application should be accessible at:${NC}"
 echo -e "Frontend: https://$DOMAIN"
 echo -e "PocketBase Admin: https://$DOMAIN/api/_/"
 
-# Show service status
+# Show service status and logs
 echo -e "${GREEN}Service status:${NC}"
 systemctl status nginx
 systemctl status pocketbase
@@ -199,3 +222,8 @@ systemctl status pocketbase
 echo -e "${GREEN}Recent logs:${NC}"
 journalctl -u nginx --no-pager -n 50
 journalctl -u pocketbase --no-pager -n 50
+
+# Test the endpoints
+echo -e "${GREEN}Testing endpoints...${NC}"
+curl -k -I https://$DOMAIN
+curl -k -I https://$DOMAIN/api/
