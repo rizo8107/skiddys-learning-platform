@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "appName": "Skiddy's Learning Platform",
+    "appUrl": "https://skiddytamil.in",
+    "senderName": "Skiddy's Learning Platform",
+    "senderAddress": "no-reply@skiddytamil.in"
+  },
+  "smtp": {
+    "enabled": true,
+    "host": "email-smtp.ap-south-1.amazonaws.com",
+    "port": 587,
+    "username": "AKIA46BWJRR3A3ZAIEXZ",
+    "password": "BP/mgFX44Zq55129YEVCBRLXL9l3IVG9JxFITKfm5EMQ",
+    "tls": true
+  },
+  "settings": {
+    "confirmEmailChange": true,
+    "allowEmailAuth": true,
+    "allowUsernameAuth": true,
+    "allowOAuth2Auth": false,
+    "requireEmail": true,
+    "emailAuth": {
+      "enabled": true,
+      "exceptDomains": [],
+      "onlyDomains": [],
+      "minPasswordLength": 8
+    }
+  }
+}

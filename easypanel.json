@@ -30,11 +30,18 @@
       "image": "ghcr.io/muchobien/pocketbase:latest",
       "domains": ["skiddytamil.in"],
       "path_prefix": "/api",
-      "env": {},
+      "env": {
+        "SMTP_HOST": "email-smtp.ap-south-1.amazonaws.com",
+        "SMTP_PORT": "587",
+        "SMTP_USERNAME": "AKIA46BWJRR3A3ZAIEXZ",
+        "SMTP_PASSWORD": "BP/mgFX44Zq55129YEVCBRLXL9l3IVG9JxFITKfm5EMQ",
+        "SMTP_SECURE": "true"
+      },
       "mounts": {
         "/pb_data": "pb_data",
         "/pb_migrations": "pb_migrations",
-        "/pb_hooks": "pb_hooks"
+        "/pb_hooks": "pb_hooks",
+        "/pb/pb_config.json": "pb_config"
       },
       "port": 8090
     }
