@@ -25,6 +25,12 @@ echo -e "${GREEN}Enabling Docker...${NC}"
 systemctl start docker
 systemctl enable docker
 
+# Login to GitHub Container Registry
+echo -e "${GREEN}Logging in to GitHub Container Registry...${NC}"
+echo "Please enter your GitHub Personal Access Token:"
+read -s GITHUB_TOKEN
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u rizo8107 --password-stdin
+
 # Clone the repository
 echo -e "${GREEN}Cloning repository...${NC}"
 git clone $REPO_URL /opt/skiddys
@@ -51,7 +57,9 @@ version: '3'
 
 services:
   frontend:
-    image: ghcr.io/rizo8107/skiddys-learning-platform-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "80:80"
