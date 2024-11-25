@@ -17,7 +17,18 @@ apt update && apt upgrade -y
 
 # Install required packages
 echo -e "${GREEN}Installing required packages...${NC}"
-apt install -y nginx certbot python3-certbot-nginx nodejs npm wget
+apt install -y nginx certbot python3-certbot-nginx nodejs npm wget unzip
+
+# Stop any existing services
+echo -e "${GREEN}Stopping existing services...${NC}"
+systemctl stop nginx
+systemctl stop pocketbase
+killall nginx
+killall pocketbase
+
+# Clean up any existing processes using ports 80 and 443
+echo -e "${GREEN}Cleaning up ports...${NC}"
+lsof -ti:80,443 | xargs -r kill -9
 
 # Install pnpm
 echo -e "${GREEN}Installing pnpm...${NC}"
@@ -28,7 +39,7 @@ echo -e "${GREEN}Downloading PocketBase...${NC}"
 mkdir -p /opt/pocketbase
 cd /opt/pocketbase
 wget https://github.com/pocketbase/pocketbase/releases/latest/download/pocketbase_linux_amd64.zip
-unzip pocketbase_linux_amd64.zip
+unzip -o pocketbase_linux_amd64.zip
 rm pocketbase_linux_amd64.zip
 chmod +x pocketbase
 
@@ -43,7 +54,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/pocketbase
-ExecStart=/opt/pocketbase/pocketbase serve
+ExecStart=/opt/pocketbase/pocketbase serve --http=127.0.0.1:8090
 Restart=always
 Environment=SMTP_HOST=email-smtp.ap-south-1.amazonaws.com
 Environment=SMTP_PORT=587
@@ -58,17 +69,15 @@ EOL
 # Clone and build frontend
 echo -e "${GREEN}Cloning and building frontend...${NC}"
 cd /opt
+rm -rf skiddys
 git clone https://github.com/rizo8107/skiddys-learning-platform.git skiddys
 cd skiddys
 pnpm install
 VITE_API_URL=https://skiddytamil.in/api pnpm build
 
-# Set up SSL with Certbot
-echo -e "${GREEN}Setting up SSL certificates...${NC}"
-certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email $EMAIL
-
-# Configure Nginx
+# Configure Nginx first
 echo -e "${GREEN}Configuring Nginx...${NC}"
+rm -f /etc/nginx/sites-enabled/default
 cat > /etc/nginx/sites-available/skiddys.conf << EOL
 server {
     listen 80;
@@ -113,7 +122,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://localhost:8090/;
+        proxy_pass http://127.0.0.1:8090/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -130,7 +139,7 @@ server {
     }
 
     location /_/ {
-        proxy_pass http://localhost:8090/_/;
+        proxy_pass http://127.0.0.1:8090/_/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -150,14 +159,27 @@ EOL
 
 # Enable the site
 ln -sf /etc/nginx/sites-available/skiddys.conf /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
+
+# Test Nginx configuration
+echo -e "${GREEN}Testing Nginx configuration...${NC}"
+nginx -t
+
+# Set up SSL with Certbot
+echo -e "${GREEN}Setting up SSL certificates...${NC}"
+certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email $EMAIL
 
 # Start services
 echo -e "${GREEN}Starting services...${NC}"
 systemctl daemon-reload
+
+# Start PocketBase first
 systemctl enable pocketbase
 systemctl start pocketbase
-systemctl restart nginx
+sleep 5
+
+# Then start Nginx
+systemctl enable nginx
+systemctl start nginx
 
 # Set up SSL auto-renewal
 echo -e "${GREEN}Setting up SSL auto-renewal...${NC}"
@@ -172,3 +194,8 @@ echo -e "PocketBase Admin: https://$DOMAIN/api/_/"
 echo -e "${GREEN}Service status:${NC}"
 systemctl status nginx
 systemctl status pocketbase
+
+# Show logs if there are any issues
+echo -e "${GREEN}Recent logs:${NC}"
+journalctl -u nginx --no-pager -n 50
+journalctl -u pocketbase --no-pager -n 50
