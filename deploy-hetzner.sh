@@ -47,55 +47,64 @@ chmod -R 755 ssl
 # Create docker-compose.yml
 echo -e "${GREEN}Creating docker-compose configuration...${NC}"
 cat > docker-compose.yml << 'EOL'
+version: '3'
+
 services:
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/rizo8107/skiddys-learning-platform-frontend:latest
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     environment:
       - VITE_API_URL=https://skiddytamil.in/api
     volumes:
-      - ./ssl:/etc/nginx/ssl
+      - ./dist:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-    depends_on:
-      - pocketbase
+      - ./ssl:/etc/nginx/ssl
     networks:
-      - app_network
-    restart: unless-stopped
+      - default
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
       interval: 30s
       timeout: 10s
       retries: 3
+    mem_limit: 512M
 
   pocketbase:
     image: ghcr.io/muchobien/pocketbase:latest
-    volumes:
-      - ./pb_data:/pb/pb_data
-      - ./pb_migrations:/pb/pb_migrations
-      - ./pb_hooks:/pb/pb_hooks
-      - ./pb_config.json:/pb/pb_config.json
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
     environment:
       - SMTP_HOST=email-smtp.ap-south-1.amazonaws.com
       - SMTP_PORT=587
       - SMTP_USERNAME=AKIA46BWJRR3A3ZAIEXZ
       - SMTP_PASSWORD=BP/mgFX44Zq55129YEVCBRLXL9l3IVG9JxFITKfm5EMQ
       - SMTP_SECURE=true
+    volumes:
+      - ./pb_data:/pb/pb_data
+      - ./pb_migrations:/pb/pb_migrations
+      - ./pb_hooks:/pb/pb_hooks
+      - ./pb_config.json:/pb/pb_config.json
     networks:
-      - app_network
-    restart: unless-stopped
+      - default
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    mem_limit: 512M
 
 networks:
-  app_network:
+  default:
     driver: bridge
+
+volumes:
+  pb_data:
+  pb_migrations:
+  pb_hooks:
+  ssl:
 EOL
 
 # Create nginx configuration
