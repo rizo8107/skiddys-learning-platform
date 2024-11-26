@@ -35,6 +35,7 @@ export interface User extends Record {
     avatar?: string;
     role: 'student' | 'instructor' | 'admin';
     email?: string;
+    course_access?: string[];
 }
 
 export interface Course extends Record {
@@ -42,14 +43,23 @@ export interface Course extends Record {
     description: string;
     thumbnail?: string;
     instructor: string;
-    duration?: string;
-    level?: string;
-    prerequisites?: string[];
-    skills?: string[];
-    visibility: 'public' | 'private';
+    duration: string;
+    level: 'Beginner' | 'Intermediate' | 'Advanced';
+    enabled: boolean;
     expand?: {
         instructor?: User;
-    };
+    }
+}
+
+export interface Lesson extends Record {
+    lessons_title: string;
+    description: string;
+    course: string;
+    videoUrl: string;
+    order: number;
+    expand?: {
+        course?: Course;
+    }
 }
 
 export interface LessonResource extends Record {
@@ -58,37 +68,25 @@ export interface LessonResource extends Record {
     resource_file?: string;
     resource_link?: string;
     resource_type: 'document' | 'video' | 'exercise' | 'link' | 'article' | 'code' | 'other';
-    resource_description?: string;
-}
-
-export interface Lesson extends Record {
-    lessons_title: string;
-    description?: string;
-    course: string;
-    videoUrl: string;
-    order: number;
-    completed?: boolean;
-    duration?: string;
-    objectives?: string[];
     expand?: {
-        resources?: LessonResource[];
-    };
+        lesson?: Lesson;
+    }
 }
 
-export interface Review {
-    id: string;
+export interface Settings extends Record {
+    site_name: string;
+    site_logo?: string;
+}
+
+export interface Review extends Record {
     course: string;
     user: string;
     rating: number;
     comment: string;
-    created: string;
-    updated: string;
     expand?: {
-        user: {
-            username: string;
-            id: string;
-        };
-    };
+        user?: User;
+        course?: Course;
+    }
 }
 
 export interface Enrollment extends Record {
@@ -96,29 +94,20 @@ export interface Enrollment extends Record {
     course: string;
     progress: number;
     completedLessons?: string[];
-}
-
-export interface Settings extends Record {
-    site_name: string;
-    site_description: string;
-    contact_email: string;
-    social_links: {
-        twitter?: string;
-        github?: string;
-        linkedin?: string;
-    };
-    site_logo?: string;
+    expand?: {
+        user?: User;
+        course?: Course;
+    }
 }
 
 export interface LessonNote extends Record {
     lesson: string;
     user: string;
     content: string;
-    created: string;
-    updated: string;
     expand?: {
+        lesson?: Lesson;
         user?: User;
-    };
+    }
 }
 
 // Error Handling
@@ -149,21 +138,25 @@ export const courseService = {
         try {
             const records = await pb.collection('courses').getFullList<Course>({
                 filter,
-                sort: '-created'
+                sort: '-created',
+                expand: 'instructor'
             });
             return records;
         } catch (error) {
             console.error('Error fetching courses:', error);
-            return [];
+            throw error;
         }
     },
 
     async getCourse(id: string): Promise<Course | null> {
         try {
-            return await pb.collection('courses').getOne<Course>(id);
+            const record = await pb.collection('courses').getOne<Course>(id, {
+                expand: 'instructor'
+            });
+            return record;
         } catch (error) {
             console.error('Error fetching course:', error);
-            return null;
+            throw error;
         }
     },
 
@@ -172,7 +165,8 @@ export const courseService = {
             if (!pb.authStore.isValid) {
                 throw new Error('Must be authenticated to create courses');
             }
-            return await pb.collection('courses').create<Course>(data);
+            const record = await pb.collection('courses').create<Course>(data);
+            return record;
         } catch (error) {
             console.error('Error creating course:', error);
             throw error;
@@ -195,7 +189,8 @@ export const courseService = {
                 throw new Error('Only course instructors or admins can update courses');
             }
 
-            return await pb.collection('courses').update<Course>(id, data);
+            const record = await pb.collection('courses').update<Course>(id, data);
+            return record;
         } catch (error) {
             console.error('Error updating course:', error);
             throw error;
@@ -574,20 +569,33 @@ export const enrollmentService = {
 export const settingsService = {
     async getSettings(): Promise<Settings | null> {
         try {
-            const records = await pb.collection('settings').getFullList<Settings>();
+            const records = await pb.collection('settings').getFullList<Settings>({
+                sort: '-created',
+                cache: false
+            });
+            
+            // If no settings exist and user is admin, create default settings
+            if (records.length === 0 && isAdmin()) {
+                const defaultSettings = {
+                    site_name: 'Learning Platform',
+                };
+                return await this.createSettings(defaultSettings);
+            }
+            
             return records[0] || null;
         } catch (error) {
             console.error('Error fetching settings:', error);
-            return null;
+            throw error;
         }
     },
 
     async createSettings(data: Partial<Settings>): Promise<Settings | null> {
         try {
-            if (!pb.authStore.isValid || !pb.authStore.model?.admin) {
+            if (!pb.authStore.isValid || !isAdmin()) {
                 throw new Error('Only admins can create settings');
             }
-            return await pb.collection('settings').create<Settings>(data);
+            const record = await pb.collection('settings').create<Settings>(data);
+            return record;
         } catch (error) {
             console.error('Error creating settings:', error);
             throw error;
@@ -596,10 +604,11 @@ export const settingsService = {
 
     async updateSettings(id: string, data: Partial<Settings>): Promise<Settings | null> {
         try {
-            if (!pb.authStore.isValid || !pb.authStore.model?.admin) {
+            if (!pb.authStore.isValid || !isAdmin()) {
                 throw new Error('Only admins can update settings');
             }
-            return await pb.collection('settings').update<Settings>(id, data);
+            const record = await pb.collection('settings').update<Settings>(id, data);
+            return record;
         } catch (error) {
             console.error('Error updating settings:', error);
             throw error;
