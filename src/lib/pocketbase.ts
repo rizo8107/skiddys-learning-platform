@@ -1,6 +1,6 @@
 import PocketBase, { Record, ClientResponseError } from 'pocketbase';
 
-const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8090';
+const baseUrl = import.meta.env.VITE_API_URL || 'https://skiddy-pocketbase.9dto0s.easypanel.host/';
 export const pb = new PocketBase(baseUrl);
 
 // Collection Types
@@ -671,7 +671,7 @@ export function getCurrentUser(): User | null {
 }
 
 export function getFileUrl(record: { id: string; collectionId: string; [key: string]: any }, filename: string): string {
-    return `http://127.0.0.1:8090/api/files/${record.collectionId}/${record.id}/${filename}`;
+    return `https://skiddy-pocketbase.9dto0s.easypanel.host//api/files/${record.collectionId}/${record.id}/${filename}`;
 }
 
 export const isAuthenticated = () => {
