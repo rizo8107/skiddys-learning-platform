@@ -2,13 +2,16 @@ version: '3'
 
 services:
   frontend:
-    build: .
+    build: 
+      context: .
+      args:
+        - VITE_API_URL=${VITE_API_URL:-https://skiddy-pocketbase.9dto0s.easypanel.host/}
     container_name: skiddys-frontend
     restart: unless-stopped
     ports:
       - "${PORT:-80}:80"
     environment:
-      - VITE_API_URL=${VITE_API_URL:-https://skiddytamil.in/api}
+      - VITE_API_URL=${VITE_API_URL:-https://skiddy-pocketbase.9dto0s.easypanel.host/}
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:

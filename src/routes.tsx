@@ -8,56 +8,81 @@ import SupportPage from './pages/SupportPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { pb } from './lib/pocketbase';
+import { SiteSettingsPage } from './pages/SiteSettingsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
-export const router = createBrowserRouter([
+export const router = createBrowserRouter(
+  [
+    {
+      path: '/login',
+      element: <LoginPage />,
+      errorElement: <ErrorBoundary />,
+    },
+    {
+      path: '/',
+      element: <RootLayout />,
+      errorElement: <ErrorBoundary />,
+      children: [
+        {
+          index: true,
+          element: pb.authStore.isValid ? <Navigate to="/courses" replace /> : <Navigate to="/login" replace />,
+        },
+        {
+          path: 'courses',
+          element: (
+            <ProtectedRoute>
+              <CoursePage />
+            </ProtectedRoute>
+          ),
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: 'profile',
+          element: (
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          ),
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: 'course/:id',
+          element: (
+            <ProtectedRoute>
+              <CourseDetailsPage />
+            </ProtectedRoute>
+          ),
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: 'support',
+          element: (
+            <ProtectedRoute>
+              <SupportPage />
+            </ProtectedRoute>
+          ),
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: 'site-settings',
+          element: (
+            <ProtectedRoute>
+              <SiteSettingsPage />
+            </ProtectedRoute>
+          ),
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: 'privacy-policy',
+          element: <PrivacyPolicyPage />,
+          errorElement: <ErrorBoundary />,
+        },
+      ],
+    },
+  ],
   {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    path: '/',
-    element: <RootLayout />,
-    children: [
-      {
-        index: true,
-        element: pb.authStore.isValid ? <Navigate to="/courses" replace /> : <Navigate to="/login" replace />,
-      },
-      {
-        path: 'courses',
-        element: (
-          <ProtectedRoute>
-            <CoursePage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'profile',
-        element: (
-          <ProtectedRoute>
-            <ProfilePage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'course/:id',
-        element: (
-          <ProtectedRoute>
-            <CourseDetailsPage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'support',
-        element: (
-          <ProtectedRoute>
-            <SupportPage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: 'privacy-policy',
-        element: <PrivacyPolicyPage />,
-      },
-    ],
-  },
-]);
+    future: {
+      v7_startTransition: true,
+    },
+  }
+);

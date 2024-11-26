@@ -11,6 +11,11 @@
           "required": true
         },
         {
+          "name": "username",
+          "type": "text",
+          "required": true
+        },
+        {
           "name": "avatar",
           "type": "file",
           "required": false
@@ -41,7 +46,7 @@
       "indexes": ["CREATE INDEX idx_course_instructor ON courses (instructor)"],
       "schema": [
         {
-          "name": "title",
+          "name": "course_title",
           "type": "text",
           "required": true
         },
@@ -56,19 +61,6 @@
           "required": false
         },
         {
-          "name": "duration",
-          "type": "text",
-          "required": true
-        },
-        {
-          "name": "level",
-          "type": "select",
-          "required": true,
-          "options": {
-            "values": ["Beginner", "Intermediate", "Advanced"]
-          }
-        },
-        {
           "name": "instructor",
           "type": "relation",
           "required": true,
@@ -77,6 +69,26 @@
             "cascadeDelete": false,
             "maxSelect": 1
           }
+        },
+        {
+          "name": "duration",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "level",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "prerequisites",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "skills",
+          "type": "json",
+          "required": false
         }
       ]
     },
@@ -95,7 +107,7 @@
       },
       "schema": [
         {
-          "name": "title",
+          "name": "lessons_title",
           "type": "text",
           "required": true
         },
@@ -123,6 +135,122 @@
           "name": "order",
           "type": "number",
           "required": true
+        },
+        {
+          "name": "completed",
+          "type": "bool",
+          "required": false
+        },
+        {
+          "name": "duration",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "objectives",
+          "type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "lesson_resources",
+      "type": "base",
+      "system": false,
+      "listRule": "true",
+      "viewRule": "true",
+      "createRule": "@request.auth.role = 'instructor' || @request.auth.role = 'admin'",
+      "updateRule": "@request.auth.role = 'instructor' && @request.auth.id = lesson.course.instructor.id || @request.auth.role = 'admin'",
+      "deleteRule": "@request.auth.role = 'instructor' && @request.auth.id = lesson.course.instructor.id || @request.auth.role = 'admin'",
+      "schema": [
+        {
+          "name": "lesson",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "lessons",
+            "cascadeDelete": true,
+            "maxSelect": 1
+          }
+        },
+        {
+          "name": "resource_title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "resource_file",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "resource_link",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "resource_type",
+          "type": "select",
+          "required": true,
+          "options": {
+            "values": ["document", "video", "exercise", "link", "article", "code", "other"]
+          }
+        },
+        {
+          "name": "resource_description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "reviews",
+      "type": "base",
+      "system": false,
+      "listRule": "true",
+      "viewRule": "true",
+      "createRule": "@request.auth.id != ''",
+      "updateRule": "@request.auth.id = user.id || @request.auth.role = 'admin'",
+      "deleteRule": "@request.auth.id = user.id || @request.auth.role = 'admin'",
+      "schema": [
+        {
+          "name": "course",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "courses",
+            "cascadeDelete": true,
+            "maxSelect": 1
+          }
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "options": {
+            "collectionId": "users",
+            "cascadeDelete": true,
+            "maxSelect": 1
+          }
+        },
+        {
+          "name": "rating",
+          "type": "number",
+          "required": true,
+          "options": {
+            "min": 1,
+            "max": 5
+          }
+        },
+        {
+          "name": "comment",
+          "type": "text",
+          "required": true
         }
       ]
     },
@@ -135,10 +263,6 @@
       "createRule": "@request.auth.id != ''",
       "updateRule": "@request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'",
       "deleteRule": "@request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'",
-      "options": {
-        "allowApiListRule": true,
-        "allowApiViewRule": true
-      },
       "schema": [
         {
           "name": "user",
@@ -172,6 +296,64 @@
         {
           "name": "completedLessons",
           "type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "site_settings",
+      "type": "base",
+      "system": false,
+      "listRule": "true",
+      "viewRule": "true",
+      "createRule": "@request.auth.role = 'admin'",
+      "updateRule": "@request.auth.role = 'admin'",
+      "deleteRule": "@request.auth.role = 'admin'",
+      "schema": [
+        {
+          "name": "site_name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "site_description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "site_logo",
+          "type": "file",
+          "required": false
+        },
+        {
+          "name": "contact_email",
+          "type": "email",
+          "required": false
+        },
+        {
+          "name": "social_links",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "footer_text",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "theme_colors",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "maintenance_mode",
+          "type": "bool",
+          "required": false,
+          "default": false
+        },
+        {
+          "name": "logo_url",
+          "type": "text",
           "required": false
         }
       ]

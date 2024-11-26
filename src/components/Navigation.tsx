@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { logout, pb, isAdmin } from '../lib/pocketbase';
+import { logout, pb, isAdmin, getCurrentUser } from '../lib/pocketbase';
 import { Logo } from './Logo';
 import { UserCircle, Settings, LogOut } from 'lucide-react';
 
@@ -10,6 +10,12 @@ export function Navigation() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const user = pb.authStore.model;
+  const currentUser = getCurrentUser();
+  const isAdminUser = isAdmin();
+  
+  console.log('Current user:', currentUser);
+  console.log('User role:', currentUser?.role);
+  console.log('Is admin?', isAdminUser);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -90,7 +96,7 @@ export function Navigation() {
               >
                 Courses
               </Link>
-              {isAdmin() && (
+              {isAdminUser && (
                 <Link
                   to="/settings"
                   className="text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-medium

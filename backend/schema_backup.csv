@@ -1,0 +1,45 @@
+Collection,Field,Type,Required,Options,Rules
+users,name,text,true,,auth collection
+users,username,text,true,,auth collection
+users,avatar,file,false,,auth collection
+users,role,select,true,"student,instructor,admin",auth collection
+courses,course_title,text,true,,listRule: true
+courses,description,text,true,,viewRule: true
+courses,thumbnail,file,false,,createRule: @request.auth.role = 'instructor' || @request.auth.role = 'admin'
+courses,instructor,relation,true,users (maxSelect: 1),updateRule: @request.auth.role = 'instructor' && @request.auth.id = instructor.id || @request.auth.role = 'admin'
+courses,duration,text,false,,deleteRule: @request.auth.role = 'instructor' && @request.auth.id = instructor.id || @request.auth.role = 'admin'
+courses,level,text,false,,
+courses,prerequisites,json,false,,
+courses,skills,json,false,,
+lessons,lessons_title,text,true,,listRule: true
+lessons,description,text,false,,viewRule: true
+lessons,course,relation,true,courses (maxSelect: 1),createRule: @request.auth.role = 'instructor' || @request.auth.role = 'admin'
+lessons,videoUrl,text,true,,updateRule: @request.auth.role = 'instructor' && @request.auth.id = course.instructor.id || @request.auth.role = 'admin'
+lessons,order,number,true,,deleteRule: @request.auth.role = 'instructor' && @request.auth.id = course.instructor.id || @request.auth.role = 'admin'
+lessons,completed,bool,false,,
+lessons,duration,text,false,,
+lessons,objectives,json,false,,
+lesson_resources,lesson,relation,true,lessons (maxSelect: 1),listRule: true
+lesson_resources,resource_title,text,true,,viewRule: true
+lesson_resources,resource_file,file,false,,createRule: @request.auth.role = 'instructor' || @request.auth.role = 'admin'
+lesson_resources,resource_link,text,false,,updateRule: @request.auth.role = 'instructor' && @request.auth.id = lesson.course.instructor.id || @request.auth.role = 'admin'
+lesson_resources,resource_type,select,true,"document,video,exercise,link,article,code,other",deleteRule: @request.auth.role = 'instructor' && @request.auth.id = lesson.course.instructor.id || @request.auth.role = 'admin'
+lesson_resources,resource_description,text,false,,
+lesson_resources,url,text,false,,
+reviews,course,relation,true,courses (maxSelect: 1),listRule: true
+reviews,user,relation,true,users (maxSelect: 1),viewRule: true
+reviews,rating,number,true,"min: 1, max: 5",createRule: @request.auth.id != ''
+reviews,comment,text,true,,updateRule: @request.auth.id = user.id || @request.auth.role = 'admin'
+enrollments,user,relation,true,users (maxSelect: 1),listRule: @request.auth.id != ''
+enrollments,course,relation,true,courses (maxSelect: 1),viewRule: @request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'
+enrollments,progress,number,true,"min: 0, max: 100",createRule: @request.auth.id != ''
+enrollments,completedLessons,json,false,,updateRule: @request.auth.id = user.id || @request.auth.role = 'instructor' || @request.auth.role = 'admin'
+site_settings,site_name,text,true,,listRule: true
+site_settings,site_description,text,false,,viewRule: true
+site_settings,site_logo,file,false,,createRule: @request.auth.role = 'admin'
+site_settings,contact_email,email,false,,updateRule: @request.auth.role = 'admin'
+site_settings,social_links,json,false,,deleteRule: @request.auth.role = 'admin'
+site_settings,footer_text,text,false,,
+site_settings,theme_colors,json,false,,
+site_settings,maintenance_mode,bool,false,default: false,
+site_settings,logo_url,text,false,,

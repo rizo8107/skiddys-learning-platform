@@ -33,6 +33,7 @@ export interface LessonResource extends Record {
     resource_link?: string;
     resource_type: 'document' | 'video' | 'exercise' | 'link' | 'article' | 'code' | 'other';
     resource_description?: string;
+    url?: string; // The full URL for the resource (file or link)
 }
 
 export interface Lesson extends Record {
@@ -76,15 +77,27 @@ export interface Settings extends Record {
     // Add settings properties here
 }
 
-export interface LessonNote extends Record {
-    lesson: string;
-    user: string;
-    content: string;
-    created: string;
-    updated: string;
-    expand?: {
-        user?: User;
+export interface SiteSettings extends Record {
+    site_name: string;
+    site_description?: string;
+    site_logo?: string;
+    contact_email?: string;
+    social_links?: {
+        facebook?: string;
+        twitter?: string;
+        instagram?: string;
+        linkedin?: string;
+        youtube?: string;
     };
+    footer_text?: string;
+    theme_colors?: {
+        primary?: string;
+        secondary?: string;
+        accent?: string;
+        background?: string;
+    };
+    maintenance_mode?: boolean;
+    logo_url?: string;
 }
 
 // Error Handling
@@ -113,42 +126,21 @@ const handlePocketbaseError = (error: unknown) => {
 export const courseService = {
     async getAll(): Promise<Course[]> {
         try {
-            let records;
-            
-            if (isAdmin()) {
-                // Admin sees all courses
-                records = await pb.collection('courses').getFullList({
-                    sort: '-created',
-                    expand: 'instructor'
-                });
-            } else {
-                // Regular users only see courses they have access to
-                const userId = pb.authStore.model?.id;
-                if (!userId) return [];
-
-                const user = await pb.collection('users').getOne(userId);
-                const accessibleCourseIds = user.course_access || [];
-
-                if (accessibleCourseIds.length === 0) return [];
-
-                // Only fetch courses that are both enabled and in the user's course_access array
-                records = await pb.collection('courses').getFullList({
-                    filter: `id ?= "${accessibleCourseIds.join('" || id ?= "')}" && enabled = true`,
-                    sort: '-created',
-                    expand: 'instructor'
-                });
+            if (!pb.authStore.isValid) {
+                return [];
             }
-
-            // Process thumbnails for each course
-            return records.map(record => ({
-                ...record,
-                thumbnail: record.thumbnail 
-                  ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
-                  : null
-            }));
+            const records = await pb
+                .collection('courses')
+                .getFullList<Course>({
+                    sort: '-created',
+                    expand: 'instructor',
+                });
+            return records;
         } catch (error) {
-            console.error('Error fetching courses:', error);
-            return [];
+            if ((error as ClientResponseError).status === 403) {
+                return [];
+            }
+            throw error;
         }
     },
 
@@ -267,151 +259,55 @@ export const lessonResourceService = {
                 filter: `lesson = "${lessonId}"`,
                 sort: 'created',
             });
-            return records as LessonResource[];
+            
+            return records.map(record => ({
+                ...record,
+                url: record.resource_file 
+                    ? pb.files.getUrl(record, record.resource_file)
+                    : record.resource_link || ''
+            })) as LessonResource[];
         } catch (error) {
             console.error('Error fetching lesson resources:', error);
             throw handlePocketbaseError(error);
         }
     },
 
-    async create(data: {
-        lesson: string;
-        resource_title: string;
-        resource_file?: File;
-        resource_link?: string;
-        resource_type: LessonResource['resource_type'];
-        resource_description?: string;
-    }): Promise<LessonResource> {
+    async create(data: FormData): Promise<LessonResource> {
         try {
-            const formData = new FormData();
-            formData.append('lesson', data.lesson);
-            formData.append('resource_title', data.resource_title);
-            formData.append('resource_type', data.resource_type);
-            
-            if (data.resource_description) {
-                formData.append('resource_description', data.resource_description);
-            }
-
-            // Add either file or link
-            if (data.resource_file) {
-                formData.append('resource_file', data.resource_file);
-            } else if (data.resource_link) {
-                formData.append('resource_link', data.resource_link);
-            }
-
-            const record = await pb.collection('lesson_resources').create(formData);
-            return record as LessonResource;
+            const record = await pb.collection('lesson_resources').create(data);
+            return {
+                ...record,
+                url: record.resource_file 
+                    ? pb.files.getUrl(record, record.resource_file)
+                    : record.resource_link || ''
+            } as LessonResource;
         } catch (error) {
             console.error('Error creating lesson resource:', error);
             throw handlePocketbaseError(error);
         }
     },
 
+    async update(id: string, data: FormData): Promise<LessonResource> {
+        try {
+            const record = await pb.collection('lesson_resources').update(id, data);
+            return {
+                ...record,
+                url: record.resource_file 
+                    ? pb.files.getUrl(record, record.resource_file)
+                    : record.resource_link || ''
+            } as LessonResource;
+        } catch (error) {
+            console.error('Error updating lesson resource:', error);
+            throw handlePocketbaseError(error);
+        }
+    },
+    
     async delete(id: string): Promise<boolean> {
         try {
             await pb.collection('lesson_resources').delete(id);
             return true;
         } catch (error) {
             console.error('Error deleting lesson resource:', error);
-            throw handlePocketbaseError(error);
-        }
-    },
-
-    getFileUrl(record: LessonResource): string {
-        try {
-            if (record.resource_link) {
-                return record.resource_link;
-            }
-
-            if (!record.resource_file) {
-                return '';
-            }
-
-            const baseUrl = pb.baseUrl;
-            const collectionId = 'lesson_resources';
-            const recordId = record.id;
-            const fileName = record.resource_file;
-
-            // Construct the file URL
-            const fileUrl = `${baseUrl}/api/files/${collectionId}/${recordId}/${fileName}`;
-            console.log('Generated file URL:', fileUrl);
-            
-            // Verify the URL is valid
-            try {
-                new URL(fileUrl);
-            } catch (e) {
-                console.error('Generated invalid URL:', fileUrl);
-                return '';
-            }
-
-            return fileUrl;
-        } catch (error) {
-            console.error('Error generating file URL:', error);
-            return '';
-        }
-    }
-};
-
-// Lesson Note Services
-export const lessonNoteService = {
-    async getAll(lessonId: string): Promise<LessonNote[]> {
-        try {
-            const result = await pb.collection('lesson_notes').getList(1, 50, {
-                filter: `lesson = "${lessonId}"`,
-                sort: '-created',
-                expand: 'user',
-            });
-            return result.items as LessonNote[];
-        } catch (error) {
-            console.error('Error fetching lesson notes:', error);
-            throw handlePocketbaseError(error);
-        }
-    },
-
-    async create(data: { lesson: string; content: string }): Promise<LessonNote> {
-        try {
-            const user = pb.authStore.model?.id;
-            if (!user) throw new Error('User not authenticated');
-            
-            const record = await pb.collection('lesson_notes').create({
-                ...data,
-                user,
-            });
-
-            // Fetch the complete record with expansions
-            const completeRecord = await pb.collection('lesson_notes').getOne(record.id, {
-                expand: 'user',
-            });
-            
-            return completeRecord as LessonNote;
-        } catch (error) {
-            console.error('Error creating lesson note:', error);
-            throw handlePocketbaseError(error);
-        }
-    },
-
-    async update(id: string, data: { content: string }): Promise<LessonNote> {
-        try {
-            const record = await pb.collection('lesson_notes').update(id, data);
-            
-            // Fetch the complete record with expansions
-            const completeRecord = await pb.collection('lesson_notes').getOne(record.id, {
-                expand: 'user',
-            });
-            
-            return completeRecord as LessonNote;
-        } catch (error) {
-            console.error('Error updating lesson note:', error);
-            throw handlePocketbaseError(error);
-        }
-    },
-
-    async delete(id: string): Promise<boolean> {
-        try {
-            await pb.collection('lesson_notes').delete(id);
-            return true;
-        } catch (error) {
-            console.error('Error deleting lesson note:', error);
             throw handlePocketbaseError(error);
         }
     },
@@ -547,11 +443,16 @@ export const enrollmentService = {
 export const settingsService = {
     async get(): Promise<Settings | null> {
         try {
-            const records = await pb.collection('settings').getList(1, 1);
-            return records.items[0] as Settings;
+            if (!pb.authStore.isValid) {
+                return null;
+            }
+            const record = await pb.collection('settings').getFirstListItem('');
+            return record as Settings;
         } catch (error) {
-            console.error('Error fetching settings:', error);
-            return null;
+            if ((error as ClientResponseError).status === 403) {
+                return null;
+            }
+            throw error;
         }
     },
 
@@ -565,6 +466,102 @@ export const settingsService = {
         }
     },
 };
+
+// Site Settings Service
+class SiteSettingsService {
+    private settingsCache: SiteSettings | null = null;
+    private cacheExpiry: number = 0;
+    private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+    async get(): Promise<SiteSettings> {
+        try {
+            // Check cache first
+            const now = Date.now();
+            if (this.settingsCache && now < this.cacheExpiry) {
+                return this.settingsCache;
+            }
+
+            // Fetch first record from site_settings
+            const records = await pb.collection('site_settings').getList(1, 1, {
+                sort: '-created',
+            });
+
+            if (records.items.length === 0) {
+                // Create default settings if none exist
+                const defaultSettings = {
+                    site_name: 'My Learning Platform',
+                    site_description: 'A platform for online learning',
+                    footer_text: ' ' + new Date().getFullYear() + ' My Learning Platform',
+                    maintenance_mode: false,
+                    theme_colors: {
+                        primary: '#3b82f6',
+                        secondary: '#1e40af',
+                        accent: '#60a5fa',
+                        background: '#ffffff'
+                    }
+                };
+
+                const record = await pb.collection('site_settings').create(defaultSettings);
+                const settings = record as SiteSettings;
+
+                // Add logo URL if exists
+                if (settings.site_logo) {
+                    settings.logo_url = pb.files.getUrl(record, settings.site_logo);
+                }
+
+                // Update cache
+                this.settingsCache = settings;
+                this.cacheExpiry = now + this.CACHE_DURATION;
+
+                return settings;
+            }
+
+            const settings = records.items[0] as SiteSettings;
+
+            // Add logo URL if exists
+            if (settings.site_logo) {
+                settings.logo_url = pb.files.getUrl(records.items[0], settings.site_logo);
+            }
+
+            // Update cache
+            this.settingsCache = settings;
+            this.cacheExpiry = now + this.CACHE_DURATION;
+
+            return settings;
+        } catch (error) {
+            console.error('Error fetching site settings:', error);
+            throw handlePocketbaseError(error);
+        }
+    }
+
+    async update(id: string, data: FormData): Promise<SiteSettings> {
+        try {
+            const record = await pb.collection('site_settings').update(id, data);
+            const settings = record as SiteSettings;
+
+            // Add logo URL if exists
+            if (settings.site_logo) {
+                settings.logo_url = pb.files.getUrl(record, settings.site_logo);
+            }
+
+            // Clear cache to force refresh
+            this.settingsCache = null;
+            this.cacheExpiry = 0;
+
+            return settings;
+        } catch (error) {
+            console.error('Error updating site settings:', error);
+            throw handlePocketbaseError(error);
+        }
+    }
+
+    clearCache(): void {
+        this.settingsCache = null;
+        this.cacheExpiry = 0;
+    }
+}
+
+export const siteSettingsService = new SiteSettingsService();
 
 // Authentication
 export async function login(email: string, password: string) {

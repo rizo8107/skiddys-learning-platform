@@ -20,10 +20,11 @@ export const LessonNotes: React.FC<LessonNotesProps> = ({ lessonId }) => {
     queryKey: ['lessonNotes', lessonId],
     queryFn: () => lessonNoteService.getAll(lessonId),
     enabled: !!lessonId,
-    refetchOnWindowFocus: false, // Don't refetch when window regains focus
-    refetchInterval: false, // Disable automatic refetching
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    retry: false, // Don't retry on error
+    refetchOnWindowFocus: true,
+    refetchInterval: 3000, // Refetch more frequently
+    staleTime: 0, // Always consider data stale
+    retry: 3, // Increase retry attempts
+    retryDelay: 1000, // Wait 1 second between retries
   });
 
   // Create note mutation
@@ -32,11 +33,46 @@ export const LessonNotes: React.FC<LessonNotesProps> = ({ lessonId }) => {
       const result = await lessonNoteService.create({ lesson: lessonId, content });
       return result;
     },
-    onSuccess: (newNote) => {
-      // Optimistically update the cache immediately
+    onMutate: async (content) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['lessonNotes', lessonId] });
+
+      // Snapshot the previous value
+      const previousNotes = queryClient.getQueryData(['lessonNotes', lessonId]);
+
+      // Optimistically update to the new value
+      const optimisticNote = {
+        id: 'temp-' + Date.now(),
+        lesson: lessonId,
+        content,
+        user: pb.authStore.model?.id,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+        expand: {
+          user: pb.authStore.model
+        }
+      };
+
       queryClient.setQueryData(['lessonNotes', lessonId], (old: LessonNote[] = []) => {
-        return [newNote, ...old];
+        return [optimisticNote, ...old];
       });
+
+      // Return a context object with the snapshotted value
+      return { previousNotes };
+    },
+    onError: (err, content, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousNotes) {
+        queryClient.setQueryData(['lessonNotes', lessonId], context.previousNotes);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['lessonNotes', lessonId] });
+    },
+    onSuccess: (newNote) => {
+      // Clear the input field
+      setNewNote('');
     },
   });
 
@@ -46,12 +82,28 @@ export const LessonNotes: React.FC<LessonNotesProps> = ({ lessonId }) => {
       const result = await lessonNoteService.update(id, { content });
       return result;
     },
-    onSuccess: (updatedNote) => {
-      // Optimistically update the cache immediately
+    onMutate: async ({ id, content }) => {
+      await queryClient.cancelQueries({ queryKey: ['lessonNotes', lessonId] });
+
+      const previousNotes = queryClient.getQueryData(['lessonNotes', lessonId]);
+
       queryClient.setQueryData(['lessonNotes', lessonId], (old: LessonNote[] = []) => {
-        return old.map(note => note.id === updatedNote.id ? updatedNote : note);
+        return old.map(note => 
+          note.id === id 
+            ? { ...note, content, updated: new Date().toISOString() }
+            : note
+        );
       });
-      setEditingNote(null);
+
+      return { previousNotes };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousNotes) {
+        queryClient.setQueryData(['lessonNotes', lessonId], context.previousNotes);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['lessonNotes', lessonId] });
     },
   });
 
@@ -61,11 +113,24 @@ export const LessonNotes: React.FC<LessonNotesProps> = ({ lessonId }) => {
       await lessonNoteService.delete(id);
       return id;
     },
-    onSuccess: (deletedId) => {
-      // Optimistically update the cache immediately
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['lessonNotes', lessonId] });
+
+      const previousNotes = queryClient.getQueryData(['lessonNotes', lessonId]);
+
       queryClient.setQueryData(['lessonNotes', lessonId], (old: LessonNote[] = []) => {
-        return old.filter(note => note.id !== deletedId);
+        return old.filter(note => note.id !== id);
       });
+
+      return { previousNotes };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousNotes) {
+        queryClient.setQueryData(['lessonNotes', lessonId], context.previousNotes);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['lessonNotes', lessonId] });
     },
   });
 

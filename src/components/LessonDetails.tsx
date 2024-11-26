@@ -3,7 +3,6 @@ import { FileDown, Book, Clock, Target, Link2, ExternalLink } from 'lucide-react
 import type { Lesson, LessonResource } from '../lib/pocketbase';
 import { lessonResourceService } from '../lib/pocketbase';
 import { useQuery } from '@tanstack/react-query';
-import { LessonNotes } from './LessonNotes';
 
 interface LessonDetailsProps {
   lesson: Lesson | null;
@@ -167,9 +166,6 @@ export const LessonDetails: React.FC<LessonDetailsProps> = ({ lesson }) => {
           </div>
         )}
       </div>
-
-      {/* Lesson Notes */}
-      {lesson && <LessonNotes lessonId={lesson.id} />}
     </div>
   );
 };
