@@ -545,25 +545,40 @@ export const enrollmentService = {
 
 // Settings Service
 export const settingsService = {
-    async get(): Promise<Settings | null> {
-        try {
-            const records = await pb.collection('settings').getList(1, 1);
-            return records.items[0] as Settings;
-        } catch (error) {
-            console.error('Error fetching settings:', error);
-            return null;
-        }
-    },
-
-    async update(id: string, data: FormData): Promise<Settings> {
-        try {
-            const record = await pb.collection('settings').update(id, data);
-            return record as Settings;
-        } catch (error) {
-            handlePocketbaseError(error);
-            throw error;
-        }
-    },
+  async get(): Promise<Settings | null> {
+    try {
+      const records = await pb.collection('settings').getList(1, 1);
+      if (records.items.length === 0) {
+        // Create default settings if none exist
+        const defaultSettings = {
+          site_name: "Skiddy's Learning Platform",
+          site_description: "Learn and grow with Skiddy's comprehensive courses",
+          contact_email: "support@skiddytamil.in",
+          social_links: {
+            twitter: "https://twitter.com/skiddytamil",
+            github: "https://github.com/skiddytamil",
+            linkedin: "https://linkedin.com/in/skiddytamil"
+          }
+        };
+        const record = await pb.collection('settings').create(defaultSettings);
+        return record as Settings;
+      }
+      return records.items[0] as Settings;
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      return null;
+    }
+  },
+  
+  async update(id: string, data: FormData): Promise<Settings> {
+    try {
+      const record = await pb.collection('settings').update(id, data);
+      return record as Settings;
+    } catch (error) {
+      handlePocketbaseError(error);
+      throw error;
+    }
+  }
 };
 
 // Authentication
