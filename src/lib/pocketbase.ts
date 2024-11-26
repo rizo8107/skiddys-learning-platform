@@ -1,32 +1,7 @@
 import PocketBase, { Record, ClientResponseError } from 'pocketbase';
 
-// Initialize PocketBase with proper base URL
-const baseUrl = import.meta.env.VITE_API_URL || window.location.origin + '/api';
+const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8090';
 export const pb = new PocketBase(baseUrl);
-
-// Try to restore auth state from localStorage
-try {
-    const storedAuth = localStorage.getItem('pocketbase_auth');
-    if (storedAuth) {
-        const { token, model } = JSON.parse(storedAuth);
-        pb.authStore.save(token, model);
-    }
-} catch (error) {
-    console.error('Error restoring auth state:', error);
-    localStorage.removeItem('pocketbase_auth');
-}
-
-// Handle auth state changes
-pb.authStore.onChange(() => {
-    if (pb.authStore.isValid) {
-        localStorage.setItem('pocketbase_auth', JSON.stringify({
-            token: pb.authStore.token,
-            model: pb.authStore.model
-        }));
-    } else {
-        localStorage.removeItem('pocketbase_auth');
-    }
-});
 
 // Collection Types
 export interface User extends Record {
@@ -35,7 +10,6 @@ export interface User extends Record {
     avatar?: string;
     role: 'student' | 'instructor' | 'admin';
     email?: string;
-    course_access?: string[];
 }
 
 export interface Course extends Record {
@@ -43,23 +17,13 @@ export interface Course extends Record {
     description: string;
     thumbnail?: string;
     instructor: string;
-    duration: string;
-    level: 'Beginner' | 'Intermediate' | 'Advanced';
-    enabled: boolean;
+    duration?: string;
+    level?: string;
+    prerequisites?: string[];
+    skills?: string[];
     expand?: {
         instructor?: User;
-    }
-}
-
-export interface Lesson extends Record {
-    lessons_title: string;
-    description: string;
-    course: string;
-    videoUrl: string;
-    order: number;
-    expand?: {
-        course?: Course;
-    }
+    };
 }
 
 export interface LessonResource extends Record {
@@ -68,9 +32,37 @@ export interface LessonResource extends Record {
     resource_file?: string;
     resource_link?: string;
     resource_type: 'document' | 'video' | 'exercise' | 'link' | 'article' | 'code' | 'other';
+    resource_description?: string;
+}
+
+export interface Lesson extends Record {
+    lessons_title: string;
+    description?: string;
+    course: string;
+    videoUrl: string;
+    order: number;
+    completed?: boolean;
+    duration?: string;
+    objectives?: string[];
     expand?: {
-        lesson?: Lesson;
-    }
+        resources?: LessonResource[];
+    };
+}
+
+export interface Review {
+    id: string;
+    course: string;
+    user: string;
+    rating: number;
+    comment: string;
+    created: string;
+    updated: string;
+    expand?: {
+        user: {
+            username: string;
+            id: string;
+        };
+    };
 }
 
 export interface Enrollment extends Record {
@@ -78,43 +70,21 @@ export interface Enrollment extends Record {
     course: string;
     progress: number;
     completedLessons?: string[];
-    expand?: {
-        user?: User;
-        course?: Course;
-    }
 }
 
 export interface Settings extends Record {
-    site_name: string;
-    site_description: string;
-    contact_email: string;
-    social_links: {
-        twitter?: string;
-        github?: string;
-        linkedin?: string;
-    };
-    site_logo?: string;
-}
-
-export interface Review extends Record {
-    course: string;
-    user: string;
-    rating: number;
-    comment: string;
-    expand?: {
-        user?: User;
-        course?: Course;
-    }
+    // Add settings properties here
 }
 
 export interface LessonNote extends Record {
     lesson: string;
     user: string;
     content: string;
+    created: string;
+    updated: string;
     expand?: {
-        lesson?: Lesson;
         user?: User;
-    }
+    };
 }
 
 // Error Handling
@@ -141,92 +111,93 @@ const handlePocketbaseError = (error: unknown) => {
 
 // Course Services
 export const courseService = {
-    async getCourses(filter = ''): Promise<Course[]> {
+    async getAll(): Promise<Course[]> {
         try {
-            const records = await pb.collection('courses').getFullList<Course>({
-                filter,
-                sort: '-created',
-                expand: 'instructor'
-            });
-            return records;
+            let records;
+            
+            if (isAdmin()) {
+                // Admin sees all courses
+                records = await pb.collection('courses').getFullList({
+                    sort: '-created',
+                    expand: 'instructor'
+                });
+            } else {
+                // Regular users only see courses they have access to
+                const userId = pb.authStore.model?.id;
+                if (!userId) return [];
+
+                const user = await pb.collection('users').getOne(userId);
+                const accessibleCourseIds = user.course_access || [];
+
+                if (accessibleCourseIds.length === 0) return [];
+
+                // Only fetch courses that are both enabled and in the user's course_access array
+                records = await pb.collection('courses').getFullList({
+                    filter: `id ?= "${accessibleCourseIds.join('" || id ?= "')}" && enabled = true`,
+                    sort: '-created',
+                    expand: 'instructor'
+                });
+            }
+
+            // Process thumbnails for each course
+            return records.map(record => ({
+                ...record,
+                thumbnail: record.thumbnail 
+                  ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
+                  : null
+            }));
         } catch (error) {
             console.error('Error fetching courses:', error);
-            throw error;
+            return [];
         }
     },
 
-    async getCourse(id: string): Promise<Course | null> {
+    async getOne(id: string): Promise<Course | null> {
         try {
-            const record = await pb.collection('courses').getOne<Course>(id, {
+            const record = await pb.collection('courses').getOne(id, {
                 expand: 'instructor'
             });
-            return record;
+            return {
+                ...record,
+                thumbnail: record.thumbnail 
+                    ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
+                    : null
+            };
         } catch (error) {
             console.error('Error fetching course:', error);
-            throw error;
+            return null;
         }
     },
 
-    async createCourse(data: Partial<Course>): Promise<Course | null> {
+    async create(data: Partial<Course>): Promise<Course> {
         try {
-            if (!pb.authStore.isValid) {
-                throw new Error('Must be authenticated to create courses');
-            }
-            const record = await pb.collection('courses').create<Course>(data);
-            return record;
+            const record = await pb.collection('courses').create(data);
+            return record as Course;
         } catch (error) {
             console.error('Error creating course:', error);
             throw error;
         }
     },
 
-    async updateCourse(id: string, data: Partial<Course>): Promise<Course | null> {
+    async update(id: string, data: Partial<Course>): Promise<Course> {
         try {
-            const course = await this.getCourse(id);
-            if (!course) {
-                throw new Error('Course not found');
-            }
-            
-            if (!pb.authStore.isValid) {
-                throw new Error('Must be authenticated to update courses');
-            }
-
-            const user = pb.authStore.model;
-            if (!user?.admin && course.instructor !== user?.id) {
-                throw new Error('Only course instructors or admins can update courses');
-            }
-
-            const record = await pb.collection('courses').update<Course>(id, data);
-            return record;
+            const record = await pb.collection('courses').update(id, data);
+            return record as Course;
         } catch (error) {
             console.error('Error updating course:', error);
             throw error;
         }
     },
 
-    async deleteCourse(id: string): Promise<boolean> {
+    async delete(id: string): Promise<boolean> {
         try {
-            const course = await this.getCourse(id);
-            if (!course) {
-                throw new Error('Course not found');
-            }
-
-            if (!pb.authStore.isValid) {
-                throw new Error('Must be authenticated to delete courses');
-            }
-
-            const user = pb.authStore.model;
-            if (!user?.admin && course.instructor !== user?.id) {
-                throw new Error('Only course instructors or admins can delete courses');
-            }
-
             await pb.collection('courses').delete(id);
             return true;
         } catch (error) {
             console.error('Error deleting course:', error);
             throw error;
         }
-    }
+    },
 };
 
 // Lesson Services
@@ -396,7 +367,7 @@ export const lessonNoteService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     async create(data: { lesson: string; content: string }): Promise<LessonNote> {
         try {
             const user = pb.authStore.model?.id;
@@ -418,7 +389,7 @@ export const lessonNoteService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     async update(id: string, data: { content: string }): Promise<LessonNote> {
         try {
             const record = await pb.collection('lesson_notes').update(id, data);
@@ -434,7 +405,7 @@ export const lessonNoteService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     async delete(id: string): Promise<boolean> {
         try {
             await pb.collection('lesson_notes').delete(id);
@@ -461,7 +432,7 @@ export const reviewService = {
             throw error;
         }
     },
-    
+
     async create(data: { course: string; rating: number; comment: string }): Promise<Review> {
         if (!pb.authStore.isValid) {
             throw new Error('You must be logged in to create a review');
@@ -478,7 +449,7 @@ export const reviewService = {
             throw new Error(error instanceof Error ? error.message : 'Failed to create review');
         }
     },
-    
+
     async update(id: string, data: { rating: number; comment: string }): Promise<Review> {
         if (!pb.authStore.isValid) {
             throw new Error('You must be logged in to update a review');
@@ -495,7 +466,7 @@ export const reviewService = {
             throw new Error(error instanceof Error ? error.message : 'Failed to update review');
         }
     },
-    
+
     async delete(id: string): Promise<boolean> {
         if (!pb.authStore.isValid) {
             throw new Error('You must be logged in to delete a review');
@@ -522,7 +493,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     getById: async (id: string) => {
         try {
             return await pb.collection('enrollments').getOne<Enrollment>(id);
@@ -531,7 +502,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     create: async (data: Partial<Enrollment>) => {
         try {
             return await pb.collection('enrollments').create<Enrollment>(data);
@@ -540,7 +511,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     update: async (id: string, data: Partial<Enrollment>) => {
         try {
             return await pb.collection('enrollments').update<Enrollment>(id, data);
@@ -549,7 +520,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     delete: async (id: string) => {
         try {
             return await pb.collection('enrollments').delete(id);
@@ -558,7 +529,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-    
+
     updateProgress: async (id: string, progress: number, completedLessons?: string[]) => {
         try {
             return await pb.collection('enrollments').update<Enrollment>(id, {
@@ -577,84 +548,55 @@ export const settingsService = {
     async get(): Promise<Settings | null> {
         try {
             const records = await pb.collection('settings').getList(1, 1);
-            if (records.items.length === 0) {
-                // Create default settings if none exist
-                const defaultSettings = {
-                    site_name: "Skiddy's Learning Platform",
-                    site_description: "Learn and grow with Skiddy's comprehensive courses",
-                    contact_email: "support@skiddytamil.in",
-                    social_links: {
-                        twitter: "https://twitter.com/skiddytamil",
-                        github: "https://github.com/skiddytamil",
-                        linkedin: "https://linkedin.com/in/skiddytamil"
-                    }
-                };
-                const record = await pb.collection('settings').create(defaultSettings);
-                return record as Settings;
-            }
             return records.items[0] as Settings;
         } catch (error) {
             console.error('Error fetching settings:', error);
             return null;
         }
     },
-    
-    async update(id: string, data: Partial<Settings> | FormData): Promise<Settings> {
+
+    async update(id: string, data: FormData): Promise<Settings> {
         try {
-            let record;
-            if (data instanceof FormData) {
-                record = await pb.collection('settings').update(id, data);
-            } else {
-                // If it's a plain object, convert social_links to JSON string if present
-                const formData = new FormData();
-                Object.entries(data).forEach(([key, value]) => {
-                    if (key === 'social_links' && typeof value === 'object') {
-                        formData.append(key, JSON.stringify(value));
-                    } else {
-                        formData.append(key, value as string);
-                    }
-                });
-                record = await pb.collection('settings').update(id, formData);
-            }
+            const record = await pb.collection('settings').update(id, data);
             return record as Settings;
         } catch (error) {
-            console.error('Error updating settings:', error);
-            throw handlePocketbaseError(error);
+            handlePocketbaseError(error);
+            throw error;
         }
-    }
+    },
 };
 
 // Authentication
 export async function login(email: string, password: string) {
-    try {
-        // Clear any existing auth state
-        pb.authStore.clear();
-        
-        // Attempt to authenticate
-        const authData = await pb.collection('users').authWithPassword(email, password);
-        
-        // Verify authentication was successful
-        if (!pb.authStore.isValid || !authData?.token || !authData?.record) {
-            throw new Error('Authentication failed');
-        }
-        
-        // Store auth data in localStorage for persistence
-        localStorage.setItem('pocketbase_auth', JSON.stringify({
-            token: authData.token,
-            model: authData.record
-        }));
-        
-        return authData;
-    } catch (error: any) {
-        // Clear auth store on error
-        pb.authStore.clear();
-        localStorage.removeItem('pocketbase_auth');
-        
-        if (error instanceof ClientResponseError) {
-            throw new Error(error.message);
-        }
-        throw error;
+  try {
+    // Clear any existing auth state
+    pb.authStore.clear();
+    
+    // Attempt to authenticate
+    const authData = await pb.collection('users').authWithPassword(email, password);
+    
+    // Verify authentication was successful
+    if (!pb.authStore.isValid || !authData?.token || !authData?.record) {
+      throw new Error('Authentication failed');
     }
+    
+    // Store auth data in localStorage for persistence
+    localStorage.setItem('pocketbase_auth', JSON.stringify({
+      token: authData.token,
+      model: authData.record
+    }));
+    
+    return authData;
+  } catch (error: any) {
+    // Clear auth store on error
+    pb.authStore.clear();
+    localStorage.removeItem('pocketbase_auth');
+    
+    if (error instanceof ClientResponseError) {
+      throw new Error(error.message);
+    }
+    throw error;
+  }
 }
 
 export const register = async (
