@@ -73,7 +73,15 @@ export interface Enrollment extends Record {
 }
 
 export interface Settings extends Record {
-    // Add settings properties here
+    site_name: string;
+    site_description: string;
+    contact_email: string;
+    social_links: {
+        twitter?: string;
+        github?: string;
+        linkedin?: string;
+    };
+    site_logo?: string;
 }
 
 export interface LessonNote extends Record {
@@ -367,7 +375,7 @@ export const lessonNoteService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     async create(data: { lesson: string; content: string }): Promise<LessonNote> {
         try {
             const user = pb.authStore.model?.id;
@@ -389,7 +397,7 @@ export const lessonNoteService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     async update(id: string, data: { content: string }): Promise<LessonNote> {
         try {
             const record = await pb.collection('lesson_notes').update(id, data);
@@ -405,7 +413,7 @@ export const lessonNoteService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     async delete(id: string): Promise<boolean> {
         try {
             await pb.collection('lesson_notes').delete(id);
@@ -432,7 +440,7 @@ export const reviewService = {
             throw error;
         }
     },
-
+    
     async create(data: { course: string; rating: number; comment: string }): Promise<Review> {
         if (!pb.authStore.isValid) {
             throw new Error('You must be logged in to create a review');
@@ -449,7 +457,7 @@ export const reviewService = {
             throw new Error(error instanceof Error ? error.message : 'Failed to create review');
         }
     },
-
+    
     async update(id: string, data: { rating: number; comment: string }): Promise<Review> {
         if (!pb.authStore.isValid) {
             throw new Error('You must be logged in to update a review');
@@ -466,7 +474,7 @@ export const reviewService = {
             throw new Error(error instanceof Error ? error.message : 'Failed to update review');
         }
     },
-
+    
     async delete(id: string): Promise<boolean> {
         if (!pb.authStore.isValid) {
             throw new Error('You must be logged in to delete a review');
@@ -493,7 +501,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     getById: async (id: string) => {
         try {
             return await pb.collection('enrollments').getOne<Enrollment>(id);
@@ -502,7 +510,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     create: async (data: Partial<Enrollment>) => {
         try {
             return await pb.collection('enrollments').create<Enrollment>(data);
@@ -511,7 +519,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     update: async (id: string, data: Partial<Enrollment>) => {
         try {
             return await pb.collection('enrollments').update<Enrollment>(id, data);
@@ -520,7 +528,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     delete: async (id: string) => {
         try {
             return await pb.collection('enrollments').delete(id);
@@ -529,7 +537,7 @@ export const enrollmentService = {
             throw handlePocketbaseError(error);
         }
     },
-
+    
     updateProgress: async (id: string, progress: number, completedLessons?: string[]) => {
         try {
             return await pb.collection('enrollments').update<Enrollment>(id, {
@@ -570,13 +578,27 @@ export const settingsService = {
     }
   },
   
-  async update(id: string, data: FormData): Promise<Settings> {
+  async update(id: string, data: Partial<Settings> | FormData): Promise<Settings> {
     try {
-      const record = await pb.collection('settings').update(id, data);
+      let record;
+      if (data instanceof FormData) {
+        record = await pb.collection('settings').update(id, data);
+      } else {
+        // If it's a plain object, convert social_links to JSON string if present
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+          if (key === 'social_links' && typeof value === 'object') {
+            formData.append(key, JSON.stringify(value));
+          } else {
+            formData.append(key, value as string);
+          }
+        });
+        record = await pb.collection('settings').update(id, formData);
+      }
       return record as Settings;
     } catch (error) {
-      handlePocketbaseError(error);
-      throw error;
+      console.error('Error updating settings:', error);
+      throw handlePocketbaseError(error);
     }
   }
 };
