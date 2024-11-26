@@ -1,14 +1,23 @@
 [build]
   base = "/"
-  command = "npm run build"
+  command = "pnpm install && pnpm build"
   publish = "dist"
-  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
-  VITE_POCKETBASE_URL = "http://127.0.0.1:8090"
+  VITE_POCKETBASE_URL = "https://skiddytamil.in/api"
+  PNPM_FLAGS = "--shamefully-hoist"
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; font-src 'self' https: data: fonts.gstatic.com fonts.googleapis.com; img-src 'self' https: data: blob:; style-src 'self' https: 'unsafe-inline' fonts.googleapis.com; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: ws: wss:; frame-src 'self' https:; object-src 'none';"
