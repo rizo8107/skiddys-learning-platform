@@ -1,7 +1,32 @@
 import PocketBase, { Record, ClientResponseError } from 'pocketbase';
 
-const baseUrl = import.meta.env.VITE_API_URL || 'https://skiddy-pocketbase.9dto0s.easypanel.host/';
+// Initialize PocketBase with proper base URL
+const baseUrl = import.meta.env.VITE_API_URL || window.location.origin + '/api';
 export const pb = new PocketBase(baseUrl);
+
+// Try to restore auth state from localStorage
+try {
+    const storedAuth = localStorage.getItem('pocketbase_auth');
+    if (storedAuth) {
+        const { token, model } = JSON.parse(storedAuth);
+        pb.authStore.save(token, model);
+    }
+} catch (error) {
+    console.error('Error restoring auth state:', error);
+    localStorage.removeItem('pocketbase_auth');
+}
+
+// Handle auth state changes
+pb.authStore.onChange(() => {
+    if (pb.authStore.isValid) {
+        localStorage.setItem('pocketbase_auth', JSON.stringify({
+            token: pb.authStore.token,
+            model: pb.authStore.model
+        }));
+    } else {
+        localStorage.removeItem('pocketbase_auth');
+    }
+});
 
 // Collection Types
 export interface User extends Record {
@@ -21,6 +46,7 @@ export interface Course extends Record {
     level?: string;
     prerequisites?: string[];
     skills?: string[];
+    visibility: 'public' | 'private';
     expand?: {
         instructor?: User;
     };
@@ -119,93 +145,86 @@ const handlePocketbaseError = (error: unknown) => {
 
 // Course Services
 export const courseService = {
-    async getAll(): Promise<Course[]> {
+    async getCourses(filter = ''): Promise<Course[]> {
         try {
-            let records;
-            
-            if (isAdmin()) {
-                // Admin sees all courses
-                records = await pb.collection('courses').getFullList({
-                    sort: '-created',
-                    expand: 'instructor'
-                });
-            } else {
-                // Regular users only see courses they have access to
-                const userId = pb.authStore.model?.id;
-                if (!userId) return [];
-
-                const user = await pb.collection('users').getOne(userId);
-                const accessibleCourseIds = user.course_access || [];
-
-                if (accessibleCourseIds.length === 0) return [];
-
-                // Only fetch courses that are both enabled and in the user's course_access array
-                records = await pb.collection('courses').getFullList({
-                    filter: `id ?= "${accessibleCourseIds.join('" || id ?= "')}" && enabled = true`,
-                    sort: '-created',
-                    expand: 'instructor'
-                });
-            }
-
-            // Process thumbnails for each course
-            return records.map(record => ({
-                ...record,
-                thumbnail: record.thumbnail 
-                  ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
-                  : null
-            }));
+            const records = await pb.collection('courses').getFullList<Course>({
+                filter,
+                sort: '-created'
+            });
+            return records;
         } catch (error) {
             console.error('Error fetching courses:', error);
             return [];
         }
     },
 
-    async getOne(id: string): Promise<Course | null> {
+    async getCourse(id: string): Promise<Course | null> {
         try {
-            const record = await pb.collection('courses').getOne(id, {
-                expand: 'instructor'
-            });
-            return {
-                ...record,
-                thumbnail: record.thumbnail 
-                    ? pb.files.getUrl(record, record.thumbnail, { thumb: '100x100' })
-                    : null
-            };
+            return await pb.collection('courses').getOne<Course>(id);
         } catch (error) {
             console.error('Error fetching course:', error);
             return null;
         }
     },
 
-    async create(data: Partial<Course>): Promise<Course> {
+    async createCourse(data: Partial<Course>): Promise<Course | null> {
         try {
-            const record = await pb.collection('courses').create(data);
-            return record as Course;
+            if (!pb.authStore.isValid) {
+                throw new Error('Must be authenticated to create courses');
+            }
+            return await pb.collection('courses').create<Course>(data);
         } catch (error) {
             console.error('Error creating course:', error);
             throw error;
         }
     },
 
-    async update(id: string, data: Partial<Course>): Promise<Course> {
+    async updateCourse(id: string, data: Partial<Course>): Promise<Course | null> {
         try {
-            const record = await pb.collection('courses').update(id, data);
-            return record as Course;
+            const course = await this.getCourse(id);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+            
+            if (!pb.authStore.isValid) {
+                throw new Error('Must be authenticated to update courses');
+            }
+
+            const user = pb.authStore.model;
+            if (!user?.admin && course.instructor !== user?.id) {
+                throw new Error('Only course instructors or admins can update courses');
+            }
+
+            return await pb.collection('courses').update<Course>(id, data);
         } catch (error) {
             console.error('Error updating course:', error);
             throw error;
         }
     },
 
-    async delete(id: string): Promise<boolean> {
+    async deleteCourse(id: string): Promise<boolean> {
         try {
+            const course = await this.getCourse(id);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            if (!pb.authStore.isValid) {
+                throw new Error('Must be authenticated to delete courses');
+            }
+
+            const user = pb.authStore.model;
+            if (!user?.admin && course.instructor !== user?.id) {
+                throw new Error('Only course instructors or admins can delete courses');
+            }
+
             await pb.collection('courses').delete(id);
             return true;
         } catch (error) {
             console.error('Error deleting course:', error);
             throw error;
         }
-    },
+    }
 };
 
 // Lesson Services
@@ -553,87 +572,72 @@ export const enrollmentService = {
 
 // Settings Service
 export const settingsService = {
-  async get(): Promise<Settings | null> {
-    try {
-      const records = await pb.collection('settings').getList(1, 1);
-      if (records.items.length === 0) {
-        // Create default settings if none exist
-        const defaultSettings = {
-          site_name: "Skiddy's Learning Platform",
-          site_description: "Learn and grow with Skiddy's comprehensive courses",
-          contact_email: "support@skiddytamil.in",
-          social_links: {
-            twitter: "https://twitter.com/skiddytamil",
-            github: "https://github.com/skiddytamil",
-            linkedin: "https://linkedin.com/in/skiddytamil"
-          }
-        };
-        const record = await pb.collection('settings').create(defaultSettings);
-        return record as Settings;
-      }
-      return records.items[0] as Settings;
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-      return null;
+    async getSettings(): Promise<Settings | null> {
+        try {
+            const records = await pb.collection('settings').getFullList<Settings>();
+            return records[0] || null;
+        } catch (error) {
+            console.error('Error fetching settings:', error);
+            return null;
+        }
+    },
+
+    async createSettings(data: Partial<Settings>): Promise<Settings | null> {
+        try {
+            if (!pb.authStore.isValid || !pb.authStore.model?.admin) {
+                throw new Error('Only admins can create settings');
+            }
+            return await pb.collection('settings').create<Settings>(data);
+        } catch (error) {
+            console.error('Error creating settings:', error);
+            throw error;
+        }
+    },
+
+    async updateSettings(id: string, data: Partial<Settings>): Promise<Settings | null> {
+        try {
+            if (!pb.authStore.isValid || !pb.authStore.model?.admin) {
+                throw new Error('Only admins can update settings');
+            }
+            return await pb.collection('settings').update<Settings>(id, data);
+        } catch (error) {
+            console.error('Error updating settings:', error);
+            throw error;
+        }
     }
-  },
-  
-  async update(id: string, data: Partial<Settings> | FormData): Promise<Settings> {
-    try {
-      let record;
-      if (data instanceof FormData) {
-        record = await pb.collection('settings').update(id, data);
-      } else {
-        // If it's a plain object, convert social_links to JSON string if present
-        const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-          if (key === 'social_links' && typeof value === 'object') {
-            formData.append(key, JSON.stringify(value));
-          } else {
-            formData.append(key, value as string);
-          }
-        });
-        record = await pb.collection('settings').update(id, formData);
-      }
-      return record as Settings;
-    } catch (error) {
-      console.error('Error updating settings:', error);
-      throw handlePocketbaseError(error);
-    }
-  }
 };
 
 // Authentication
 export async function login(email: string, password: string) {
-  try {
-    // Clear any existing auth state
-    pb.authStore.clear();
-    
-    // Attempt to authenticate
-    const authData = await pb.collection('users').authWithPassword(email, password);
-    
-    // Verify authentication was successful
-    if (!pb.authStore.isValid || !authData?.token || !authData?.record) {
-      throw new Error('Authentication failed');
+    try {
+        // Clear any existing auth state
+        pb.authStore.clear();
+        
+        // Attempt to authenticate
+        const authData = await pb.collection('users').authWithPassword(email, password);
+        
+        // Verify authentication was successful
+        if (!pb.authStore.isValid || !authData?.token || !authData?.record) {
+            throw new Error('Authentication failed');
+        }
+        
+        // Store auth data in localStorage for persistence
+        localStorage.setItem('pocketbase_auth', JSON.stringify({
+            token: authData.token,
+            model: authData.record
+        }));
+        
+        return authData;
+    } catch (error: any) {
+        // Clear auth store on error
+        pb.authStore.clear();
+        localStorage.removeItem('pocketbase_auth');
+        
+        if (error instanceof ClientResponseError) {
+            throw new Error(error.message);
+        }
+        throw error;
     }
-    
-    // Store auth data in localStorage for persistence
-    localStorage.setItem('pocketbase_auth', JSON.stringify({
-      token: authData.token,
-      model: authData.record
-    }));
-    
-    return authData;
-  } catch (error: any) {
-    // Clear auth store on error
-    pb.authStore.clear();
-    localStorage.removeItem('pocketbase_auth');
-    
-    if (error instanceof ClientResponseError) {
-      throw new Error(error.message);
-    }
-    throw error;
-  }
 }
 
 export const register = async (
@@ -671,7 +675,7 @@ export function getCurrentUser(): User | null {
 }
 
 export function getFileUrl(record: { id: string; collectionId: string; [key: string]: any }, filename: string): string {
-    return `https://skiddy-pocketbase.9dto0s.easypanel.host//api/files/${record.collectionId}/${record.id}/${filename}`;
+    return `http://127.0.0.1:8090/api/files/${record.collectionId}/${record.id}/${filename}`;
 }
 
 export const isAuthenticated = () => {
