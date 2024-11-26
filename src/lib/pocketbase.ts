@@ -73,8 +73,26 @@ export interface LessonResource extends Record {
     }
 }
 
+export interface Enrollment extends Record {
+    user: string;
+    course: string;
+    progress: number;
+    completedLessons?: string[];
+    expand?: {
+        user?: User;
+        course?: Course;
+    }
+}
+
 export interface Settings extends Record {
     site_name: string;
+    site_description: string;
+    contact_email: string;
+    social_links: {
+        twitter?: string;
+        github?: string;
+        linkedin?: string;
+    };
     site_logo?: string;
 }
 
@@ -83,17 +101,6 @@ export interface Review extends Record {
     user: string;
     rating: number;
     comment: string;
-    expand?: {
-        user?: User;
-        course?: Course;
-    }
-}
-
-export interface Enrollment extends Record {
-    user: string;
-    course: string;
-    progress: number;
-    completedLessons?: string[];
     expand?: {
         user?: User;
         course?: Course;
@@ -567,51 +574,52 @@ export const enrollmentService = {
 
 // Settings Service
 export const settingsService = {
-    async getSettings(): Promise<Settings | null> {
+    async get(): Promise<Settings | null> {
         try {
-            const records = await pb.collection('settings').getFullList<Settings>({
-                sort: '-created',
-                cache: false
-            });
-            
-            // If no settings exist and user is admin, create default settings
-            if (records.length === 0 && isAdmin()) {
+            const records = await pb.collection('settings').getList(1, 1);
+            if (records.items.length === 0) {
+                // Create default settings if none exist
                 const defaultSettings = {
-                    site_name: 'Learning Platform',
+                    site_name: "Skiddy's Learning Platform",
+                    site_description: "Learn and grow with Skiddy's comprehensive courses",
+                    contact_email: "support@skiddytamil.in",
+                    social_links: {
+                        twitter: "https://twitter.com/skiddytamil",
+                        github: "https://github.com/skiddytamil",
+                        linkedin: "https://linkedin.com/in/skiddytamil"
+                    }
                 };
-                return await this.createSettings(defaultSettings);
+                const record = await pb.collection('settings').create(defaultSettings);
+                return record as Settings;
             }
-            
-            return records[0] || null;
+            return records.items[0] as Settings;
         } catch (error) {
             console.error('Error fetching settings:', error);
-            throw error;
+            return null;
         }
     },
-
-    async createSettings(data: Partial<Settings>): Promise<Settings | null> {
+    
+    async update(id: string, data: Partial<Settings> | FormData): Promise<Settings> {
         try {
-            if (!pb.authStore.isValid || !isAdmin()) {
-                throw new Error('Only admins can create settings');
+            let record;
+            if (data instanceof FormData) {
+                record = await pb.collection('settings').update(id, data);
+            } else {
+                // If it's a plain object, convert social_links to JSON string if present
+                const formData = new FormData();
+                Object.entries(data).forEach(([key, value]) => {
+                    if (key === 'social_links' && typeof value === 'object') {
+                        formData.append(key, JSON.stringify(value));
+                    } else {
+                        formData.append(key, value as string);
+                    }
+                });
+                record = await pb.collection('settings').update(id, formData);
             }
-            const record = await pb.collection('settings').create<Settings>(data);
-            return record;
-        } catch (error) {
-            console.error('Error creating settings:', error);
-            throw error;
-        }
-    },
-
-    async updateSettings(id: string, data: Partial<Settings>): Promise<Settings | null> {
-        try {
-            if (!pb.authStore.isValid || !isAdmin()) {
-                throw new Error('Only admins can update settings');
-            }
-            const record = await pb.collection('settings').update<Settings>(id, data);
-            return record;
+            return record as Settings;
         } catch (error) {
             console.error('Error updating settings:', error);
-            throw error;
+            throw handlePocketbaseError(error);
         }
     }
 };
